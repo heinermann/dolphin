@@ -2103,7 +2103,7 @@ static void DoWriteCode(IRBuilder* ibuild, JitIL* Jit, u32 exitAddress)
 			FixupBranch noidle = Jit->J_CC(CC_NZ);
 
 			RI.Jit->Cleanup(); // is it needed?
-			Jit->ABI_CallFunction((void *)&PowerPC::OnIdle);
+			Jit->ABI_CallFunction((void *)&PowerPC::OnIdleIL);
 
 			Jit->MOV(32, PPCSTATE(pc), Imm32(ibuild->GetImmValue( getOp2(I) )));
 			Jit->WriteExceptionExit();

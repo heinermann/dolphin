@@ -506,7 +506,15 @@ void CheckBreakPoints()
 	}
 }
 
-void OnIdle()
+void OnIdle(u32 _uThreadAddr)
+{
+	u32 nextThread = Memory::Read_U32(_uThreadAddr);
+	//do idle skipping
+	if (nextThread == 0)
+		CoreTiming::Idle();
+}
+
+void OnIdleIL()
 {
 	CoreTiming::Idle();
 }
