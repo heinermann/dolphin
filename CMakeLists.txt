@@ -376,7 +376,6 @@ include(CheckLib)
 include(CheckCXXSourceRuns)
 
 if(NOT ANDROID)
-
 	include(FindOpenGL)
 	include_directories(${OPENGL_INCLUDE_DIR})
 
@@ -534,6 +533,9 @@ include_directories(Source/Core)
 #
 add_subdirectory(Externals/Bochs_disasm)
 include_directories(Externals/Bochs_disasm)
+
+add_subdirectory(Externals/lua)
+include_directories(Externals/lua)
 
 if(NOT APPLE AND NOT ANDROID)
         check_lib(ENET enet enet/enet.h QUIET)
