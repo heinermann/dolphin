@@ -16,6 +16,7 @@
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
 #include "Core/Movie.h"
+#include "Core/MovieLua.h"
 #include "Core/NetPlayProto.h"
 #include "Core/State.h"
 #include "Core/DSP/DSPCore.h"
@@ -85,6 +86,8 @@ static std::string s_InputDisplay[8];
 static GCManipFunction gcmfunc = nullptr;
 static WiiManipFunction wiimfunc = nullptr;
 
+static PlaybackType s_playback = PlaybackType::NONE;
+
 static void EnsureTmpInputSize(size_t bound)
 {
 	if (tmpInputAllocated >= bound)
@@ -153,6 +156,11 @@ void FrameUpdate()
 		s_bFrameStep = false;
 	}
 
+	if (IsPlayingInput() && s_playback == PlaybackType::LUA)
+	{
+		AdvanceLua();
+	}
+
 	// ("framestop") the only purpose of this is to cause interpreter/jit Run() to return temporarily.
 	// after that we set it back to CPU_RUNNING and continue as normal.
 	if (s_bFrameStop)
@@ -173,7 +181,7 @@ void Init()
 	s_bFrameStop = false;
 	s_bSaveConfig = false;
 	s_iCPUCore = SConfig::GetInstance().m_LocalCoreStartupParameter.iCPUCore;
-	if (IsPlayingInput())
+	if (IsPlayingInput() && s_playback == PlaybackType::DTM)
 	{
 		ReadHeader();
 		std::thread md5thread(CheckMD5);
@@ -808,16 +816,9 @@ void ReadHeader()
 	s_DSPcoefHash = tmpHeader.DSPcoefHash;
 }
 
-bool PlayInput(const std::string& filename)
+bool PlayInputDTM(const std::string& filename)
 {
-	if (s_playMode != MODE_NONE)
-		return false;
-
-	if (!File::Exists(filename))
-		return false;
-
 	File::IOFile g_recordfd;
-
 	if (!g_recordfd.Open(filename, "rb"))
 		return false;
 
@@ -839,15 +840,12 @@ bool PlayInput(const std::string& filename)
 	g_currentLagCount = 0;
 	g_currentInputCount = 0;
 
-	s_playMode = MODE_PLAYING;
-
 	Core::UpdateWantDeterminism();
 
 	s_totalBytes = g_recordfd.GetSize() - 256;
 	EnsureTmpInputSize((size_t)s_totalBytes);
 	g_recordfd.ReadArray(tmpInput, (size_t)s_totalBytes);
 	s_currentByte = 0;
-	g_recordfd.Close();
 
 	// Load savestate (and skip to frame data)
 	if (tmpHeader.bFromSaveState)
@@ -860,6 +858,44 @@ bool PlayInput(const std::string& filename)
 	}
 
 	return true;
+}
+
+bool PlayInput(const std::string& filename)
+{
+	if (s_playMode != MODE_NONE)
+		return false;
+
+	if (!File::Exists(filename))
+		return false;
+
+	// Obtain the type from extension
+	const std::string extension = filename.substr(std::min(filename.size(), filename.find_last_of('.')));
+	if (extension == ".dtm")
+	{
+		s_playback = PlaybackType::DTM;
+	}
+	else if (extension == ".lua")
+	{
+		s_playback = PlaybackType::LUA;
+	}
+	else
+	{
+		s_playback = PlaybackType::NONE;
+		return false;
+	}
+
+	s_playMode = MODE_PLAYING;
+	switch (s_playback)
+	{
+		case PlaybackType::DTM:
+			return PlayInputDTM(filename);
+		case PlaybackType::LUA:
+			s_numPads = 0x0F;
+			return PlayInputLua(filename);
+		case PlaybackType::NONE:
+			return false;
+	}
+	return false;
 }
 
 void DoState(PointerWrap &p)
@@ -1014,6 +1050,9 @@ void LoadInput(const std::string& filename)
 
 static void CheckInputEnd()
 {
+	if (s_playback == PlaybackType::LUA)
+		return;
+
 	if (g_currentFrame > g_totalFrames || s_currentByte >= s_totalBytes || (CoreTiming::GetTicks() > s_totalTickCount && !IsRecordingInputFromSaveState()))
 	{
 		EndPlayInput(!s_bReadOnly);
@@ -1022,26 +1061,39 @@ static void CheckInputEnd()
 
 void PlayController(GCPadStatus* PadStatus, int controllerID)
 {
-	// Correct playback is entirely dependent on the emulator polling the controllers
-	// in the same order done during recording
-	if (!IsPlayingInput() || !IsUsingPad(controllerID) || tmpInput == nullptr)
+	if (!IsPlayingInput())
 		return;
-
-	if (s_currentByte + 8 > s_totalBytes)
-	{
-		PanicAlertT("Premature movie end in PlayController. %u + 8 > %u", (u32)s_currentByte, (u32)s_totalBytes);
-		EndPlayInput(!s_bReadOnly);
-		return;
-	}
 
 	// dtm files don't save the mic button or error bit. not sure if they're actually used, but better safe than sorry
 	signed char e = PadStatus->err;
 	memset(PadStatus, 0, sizeof(GCPadStatus));
 	PadStatus->err = e;
 
+	if (s_playback == PlaybackType::DTM)
+	{
+		// Correct playback is entirely dependent on the emulator polling the controllers
+		// in the same order done during recording
+		if (!IsUsingPad(controllerID) || tmpInput == nullptr)
+			return;
 
-	memcpy(&s_padState, &(tmpInput[s_currentByte]), 8);
-	s_currentByte += 8;
+		if (s_currentByte + 8 > s_totalBytes)
+		{
+			PanicAlertT("Premature movie end in PlayController. %u + 8 > %u", (u32)s_currentByte, (u32)s_totalBytes);
+			EndPlayInput(!s_bReadOnly);
+			return;
+		}
+
+		memcpy(&s_padState, &(tmpInput[s_currentByte]), 8);
+		s_currentByte += 8;
+	}
+	else if (s_playback == PlaybackType::LUA)
+	{
+		s_padState = GetLuaController(controllerID);
+	}
+	else
+	{
+		PanicAlertT("No playback type/format set.");
+	}
 
 	PadStatus->triggerLeft = s_padState.TriggerL;
 	PadStatus->triggerRight = s_padState.TriggerR;

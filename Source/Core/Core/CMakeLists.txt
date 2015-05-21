@@ -12,6 +12,7 @@ set(SRCS	ActionReplay.cpp
 			HotkeyManager.cpp
 			MemTools.cpp
 			Movie.cpp
+			MovieLua.cpp
 			NetPlayClient.cpp
 			NetPlayServer.cpp
 			PatchEngine.cpp
@@ -248,6 +249,7 @@ set(LIBS
 	discio
 	enet
 	inputcommon
+	lua
 	${LZO}
 	sfml-network
 	sfml-system

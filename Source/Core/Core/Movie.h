@@ -30,6 +30,13 @@ enum PlayMode
 	MODE_PLAYING
 };
 
+enum class PlaybackType
+{
+	NONE,
+	DTM,
+	LUA
+};
+
 // GameCube Controller State
 #pragma pack(push,1)
 struct ControllerState
@@ -159,6 +166,7 @@ bool BeginRecordingInput(int controllers);
 void RecordInput(GCPadStatus* PadStatus, int controllerID);
 void RecordWiimote(int wiimote, u8 *data, u8 size);
 
+bool PlayInputDTM(const std::string& filename);
 bool PlayInput(const std::string& filename);
 void LoadInput(const std::string& filename);
 void ReadHeader();

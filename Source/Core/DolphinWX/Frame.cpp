@@ -107,7 +107,7 @@ void CRenderFrame::OnDropFiles(wxDropFilesEvent& event)
 	wxFileName file = event.GetFiles()[0];
 	const std::string filepath = WxStrToStr(file.GetFullPath());
 
-	if (file.GetExt() == "dtm")
+	if (file.GetExt() == "dtm" || file.GetExt() == "lua")
 	{
 		if (Core::IsRunning())
 			return;
