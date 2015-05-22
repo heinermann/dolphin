@@ -561,38 +561,36 @@ static std::string Analog1DToString(u8 v, const std::string& prefix, u8 range = 
 	}
 }
 
-static void SetInputDisplayString(ControllerState padState, int controllerID)
+static void SetInputDisplayString(const GCPadStatus* padStatus, int controllerID)
 {
 	s_InputDisplay[controllerID] = StringFromFormat("P%d:", controllerID + 1);
 
-	if (padState.A)
+	if (padStatus->button & PAD_BUTTON_A)
 		s_InputDisplay[controllerID].append(" A");
-	if (padState.B)
+	if (padStatus->button & PAD_BUTTON_B)
 		s_InputDisplay[controllerID].append(" B");
-	if (padState.X)
+	if (padStatus->button & PAD_BUTTON_X)
 		s_InputDisplay[controllerID].append(" X");
-	if (padState.Y)
+	if (padStatus->button & PAD_BUTTON_Y)
 		s_InputDisplay[controllerID].append(" Y");
-	if (padState.Z)
+	if (padStatus->button & PAD_TRIGGER_Z)
 		s_InputDisplay[controllerID].append(" Z");
-	if (padState.Start)
+	if (padStatus->button & PAD_BUTTON_START)
 		s_InputDisplay[controllerID].append(" START");
 
-	if (padState.DPadUp)
+	if (padStatus->button & PAD_BUTTON_UP)
 		s_InputDisplay[controllerID].append(" UP");
-	if (padState.DPadDown)
+	if (padStatus->button & PAD_BUTTON_DOWN)
 		s_InputDisplay[controllerID].append(" DOWN");
-	if (padState.DPadLeft)
+	if (padStatus->button & PAD_BUTTON_LEFT)
 		s_InputDisplay[controllerID].append(" LEFT");
-	if (padState.DPadRight)
+	if (padStatus->button & PAD_BUTTON_RIGHT)
 		s_InputDisplay[controllerID].append(" RIGHT");
-	if (padState.reset)
-		s_InputDisplay[controllerID].append(" RESET");
 
-	s_InputDisplay[controllerID].append(Analog1DToString(padState.TriggerL, " L"));
-	s_InputDisplay[controllerID].append(Analog1DToString(padState.TriggerR, " R"));
-	s_InputDisplay[controllerID].append(Analog2DToString(padState.AnalogStickX, padState.AnalogStickY, " ANA"));
-	s_InputDisplay[controllerID].append(Analog2DToString(padState.CStickX, padState.CStickY, " C"));
+	s_InputDisplay[controllerID].append(Analog1DToString(padStatus->triggerLeft, " L"));
+	s_InputDisplay[controllerID].append(Analog1DToString(padStatus->triggerRight, " R"));
+	s_InputDisplay[controllerID].append(Analog2DToString(padStatus->stickX, padStatus->stickY, " ANA"));
+	s_InputDisplay[controllerID].append(Analog2DToString(padStatus->substickX, padStatus->substickY, " C"));
 	s_InputDisplay[controllerID].append("\n");
 }
 
@@ -610,27 +608,27 @@ static void SetWiiInputDisplayString(int remoteID, u8* const data, const Wiimote
 	if (coreData)
 	{
 		wm_buttons buttons = *(wm_buttons*)coreData;
-		if(buttons.left)
+		if (buttons.left)
 			s_InputDisplay[controllerID].append(" LEFT");
-		if(buttons.right)
+		if (buttons.right)
 			s_InputDisplay[controllerID].append(" RIGHT");
-		if(buttons.down)
+		if (buttons.down)
 			s_InputDisplay[controllerID].append(" DOWN");
-		if(buttons.up)
+		if (buttons.up)
 			s_InputDisplay[controllerID].append(" UP");
-		if(buttons.a)
+		if (buttons.a)
 			s_InputDisplay[controllerID].append(" A");
-		if(buttons.b)
+		if (buttons.b)
 			s_InputDisplay[controllerID].append(" B");
-		if(buttons.plus)
+		if (buttons.plus)
 			s_InputDisplay[controllerID].append(" +");
-		if(buttons.minus)
+		if (buttons.minus)
 			s_InputDisplay[controllerID].append(" -");
-		if(buttons.one)
+		if (buttons.one)
 			s_InputDisplay[controllerID].append(" 1");
-		if(buttons.two)
+		if (buttons.two)
 			s_InputDisplay[controllerID].append(" 2");
-		if(buttons.home)
+		if (buttons.home)
 			s_InputDisplay[controllerID].append(" HOME");
 	}
 
@@ -743,7 +741,7 @@ void CheckPadStatus(GCPadStatus* PadStatus, int controllerID)
 	s_padState.reset = g_bReset;
 	g_bReset = false;
 
-	SetInputDisplayString(s_padState, controllerID);
+	SetInputDisplayString(PadStatus, controllerID);
 }
 
 void RecordInput(GCPadStatus* PadStatus, int controllerID)
@@ -836,9 +834,6 @@ bool PlayInputDTM(const std::string& filename)
 	s_totalLagCount = tmpHeader.lagCount;
 	g_totalInputCount = tmpHeader.inputCount;
 	s_totalTickCount = tmpHeader.tickCount;
-	g_currentFrame = 0;
-	g_currentLagCount = 0;
-	g_currentInputCount = 0;
 
 	Core::UpdateWantDeterminism();
 
@@ -869,7 +864,7 @@ bool PlayInput(const std::string& filename)
 		return false;
 
 	// Obtain the type from extension
-	const std::string extension = filename.substr(std::min(filename.size(), filename.find_last_of('.')));
+	const std::string extension = filename.substr(std::min(filename.size(), filename.rfind('.')));
 	if (extension == ".dtm")
 	{
 		s_playback = PlaybackType::DTM;
@@ -883,6 +878,11 @@ bool PlayInput(const std::string& filename)
 		s_playback = PlaybackType::NONE;
 		return false;
 	}
+
+	// Reset frame counts
+	g_currentFrame = 0;
+	g_currentLagCount = 0;
+	g_currentInputCount = 0;
 
 	s_playMode = MODE_PLAYING;
 	switch (s_playback)
@@ -1059,41 +1059,27 @@ static void CheckInputEnd()
 	}
 }
 
-void PlayController(GCPadStatus* PadStatus, int controllerID)
+void PlayControllerDTM(GCPadStatus* PadStatus, int controllerID)
 {
-	if (!IsPlayingInput())
+	// Correct playback is entirely dependent on the emulator polling the controllers
+	// in the same order done during recording
+	if (!IsPlayingInput() || !IsUsingPad(controllerID) || tmpInput == nullptr)
 		return;
+
+	if (s_currentByte + 8 > s_totalBytes)
+	{
+		PanicAlertT("Premature movie end in PlayController. %u + 8 > %u", (u32)s_currentByte, (u32)s_totalBytes);
+		EndPlayInput(!s_bReadOnly);
+		return;
+	}
 
 	// dtm files don't save the mic button or error bit. not sure if they're actually used, but better safe than sorry
 	signed char e = PadStatus->err;
 	memset(PadStatus, 0, sizeof(GCPadStatus));
 	PadStatus->err = e;
 
-	if (s_playback == PlaybackType::DTM)
-	{
-		// Correct playback is entirely dependent on the emulator polling the controllers
-		// in the same order done during recording
-		if (!IsUsingPad(controllerID) || tmpInput == nullptr)
-			return;
-
-		if (s_currentByte + 8 > s_totalBytes)
-		{
-			PanicAlertT("Premature movie end in PlayController. %u + 8 > %u", (u32)s_currentByte, (u32)s_totalBytes);
-			EndPlayInput(!s_bReadOnly);
-			return;
-		}
-
-		memcpy(&s_padState, &(tmpInput[s_currentByte]), 8);
-		s_currentByte += 8;
-	}
-	else if (s_playback == PlaybackType::LUA)
-	{
-		s_padState = GetLuaController(controllerID);
-	}
-	else
-	{
-		PanicAlertT("No playback type/format set.");
-	}
+	memcpy(&s_padState, &(tmpInput[s_currentByte]), 8);
+	s_currentByte += 8;
 
 	PadStatus->triggerLeft = s_padState.TriggerL;
 	PadStatus->triggerRight = s_padState.TriggerR;
@@ -1145,7 +1131,7 @@ void PlayController(GCPadStatus* PadStatus, int controllerID)
 		Core::SetState(Core::CORE_PAUSE);
 		bool found = false;
 		std::string path;
-		for (size_t i = 0; i < SConfig::GetInstance().m_ISOFolder.size(); ++i)
+		for (size_t i = 0; i < SConfig::GetInstance().m_ISOFolder.size(); i++)
 		{
 			path = SConfig::GetInstance().m_ISOFolder[i];
 			if (File::Exists(path + '/' + g_discChange))
@@ -1164,12 +1150,27 @@ void PlayController(GCPadStatus* PadStatus, int controllerID)
 			PanicAlertT("Change the disc to %s", g_discChange.c_str());
 		}
 	}
-
-	if (s_padState.reset)
-		ProcessorInterface::ResetButton_Tap();
-
-	SetInputDisplayString(s_padState, controllerID);
 	CheckInputEnd();
+}
+
+
+void PlayController(GCPadStatus* PadStatus, int controllerID)
+{
+	if (!IsPlayingInput())
+		return;
+
+	switch (s_playback)
+	{
+		case PlaybackType::LUA:
+			PlayControllerLua(PadStatus, controllerID);
+			break;
+		case PlaybackType::DTM:
+			PlayControllerDTM(PadStatus, controllerID);
+			break;
+		case PlaybackType::NONE:
+			break;
+	}
+	SetInputDisplayString(PadStatus, controllerID);
 }
 
 bool PlayWiimote(int wiimote, u8 *data, const WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key key)
@@ -1223,10 +1224,13 @@ void EndPlayInput(bool cont)
 	}
 	else if (s_playMode != MODE_NONE)
 	{
+		if (s_playback == PlaybackType::LUA)
+			StopLua();
 		s_rerecords = 0;
 		s_currentByte = 0;
 		s_playMode = MODE_NONE;
-		Core::UpdateWantDeterminism();
+		if (s_playback == PlaybackType::DTM)
+			Core::UpdateWantDeterminism();
 		Core::DisplayMessage("Movie End.", 2000);
 		s_bRecordingFromSaveState = false;
 		// we don't clear these things because otherwise we can't resume playback if we load a movie state later

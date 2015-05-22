@@ -2,17 +2,30 @@
 // Licensed under GPLv2
 // Refer to the license.txt file included.
 
+#include <array>
+#include <lua.hpp>
+
+#include "Common/MathUtil.h"
+#include "Common/MsgHandler.h"
 #include "Core/Core.h"
+#include "Core/HW/ProcessorInterface.h"
 #include "Core/HW/SI.h"
 #include "Core/Movie.h"
 #include "Core/MovieLua.h"
-#include "Common/MsgHandler.h"
+#include "Core/PowerPC/PowerPC.h"
 #include "InputCommon/GCPadStatus.h"
 
-#include "lua.hpp"
-
-#include <type_traits>
-#include <array>
+enum PadButtonExtension
+{
+	PADX_ANALOG_LEFT  = 0x00010000,
+	PADX_ANALOG_RIGHT = 0x00020000,
+	PADX_ANALOG_DOWN  = 0x00040000,
+	PADX_ANALOG_UP    = 0x00080000,
+	PADX_CSTICK_LEFT  = 0x00100000,
+	PADX_CSTICK_RIGHT = 0x00200000,
+	PADX_CSTICK_DOWN  = 0x00400000,
+	PADX_CSTICK_UP    = 0x00800000,
+};
 
 namespace Movie
 {
@@ -34,6 +47,11 @@ namespace Movie
 		// Lua module: core
 		namespace Core
 		{
+			int Advance(lua_State* L);
+			int Panic(lua_State* L);
+			int Reset(lua_State* L);
+			int Pause(lua_State* L);
+
 			// Lua function: core.advance(n = 0)
 			//
 			// Yields the lua thread and advances the game by n frames.
@@ -54,13 +72,33 @@ namespace Movie
 			int Panic(lua_State* L)
 			{
 				const char* str = luaL_optstring(L, 1, "Lua panic!");
-				PanicAlertT("%s", str);
+				PanicAlert("%s", str);
 				return 0;
 			}
 
+			// Lua function: core.reset()
+			//
+			// Like pressing the reset button on the console.
+			int Reset(lua_State* L)
+			{
+				ProcessorInterface::ResetButton_Tap();
+				return 0;
+			}
+
+			// Lua function: core.pause()
+			//
+			// Pauses emulation.
+			int Pause(lua_State* L)
+			{
+				::Core::SetState(::Core::CORE_PAUSE);
+				return 0;
+			}
+			
 			static const luaL_Reg s_core_lib[] = {
 				{ "advance", &Advance },
 				{ "panic", &Panic },
+				{ "reset", &Reset },
+				{ "pause", &Pause },
 				{ nullptr, nullptr}
 			};
 		}
@@ -76,28 +114,59 @@ namespace Movie
 				// Presses the given buttons for the current frame only.
 				static int Press(lua_State* L)
 				{
+					GCPadStatus& pad = s_controller_states[PadNumber];
 					int num_args = lua_gettop(L);
 					for (int i = 1; i <= num_args; ++i)
 					{
 						int button_id = luaL_checkinteger(L, i);
-						s_controller_states[PadNumber].button |= button_id;
+						if (button_id & PADX_CSTICK_UP)
+							pad.substickY = 255;
+						if (button_id & PADX_CSTICK_DOWN)
+							pad.substickY = 0;
+						if (button_id & PADX_CSTICK_LEFT)
+							pad.substickX = 0;
+						if (button_id & PADX_CSTICK_RIGHT)
+							pad.substickX = 255;
+						if (button_id & PADX_ANALOG_UP)
+							pad.stickY = 255;
+						if (button_id & PADX_ANALOG_DOWN)
+							pad.stickY = 0;
+						if (button_id & PADX_ANALOG_LEFT)
+							pad.stickX = 0;
+						if (button_id & PADX_ANALOG_RIGHT)
+							pad.stickX = 255;
+
+						pad.button |= static_cast<u16>(button_id);
 					}
 					return 0;
 				}
+
 				// Lua function: gcpad#.release(button, ...)
 				//
 				// Releases the given buttons if they were held or pressed.
 				static int Release(lua_State* L)
 				{
+					GCPadStatus& pad = s_controller_states[PadNumber];
 					int num_args = lua_gettop(L);
 					for (int i = 1; i <= num_args; ++i)
 					{
 						int button_id = luaL_checkinteger(L, i);
-						s_controller_states[PadNumber].button &= ~button_id;
-						s_hold_controller_states[PadNumber].button &= ~button_id;
+
+						if (button_id & (PADX_CSTICK_UP | PADX_CSTICK_DOWN))
+							pad.substickY = GCPadStatus::C_STICK_CENTER_Y;
+						if (button_id & (PADX_CSTICK_LEFT | PADX_CSTICK_RIGHT))
+							pad.substickX = GCPadStatus::C_STICK_CENTER_X;
+						if (button_id & (PADX_ANALOG_UP | PADX_ANALOG_DOWN))
+							pad.stickY = GCPadStatus::MAIN_STICK_CENTER_Y;
+						if (button_id & (PADX_ANALOG_LEFT | PADX_ANALOG_RIGHT))
+							pad.stickX = GCPadStatus::MAIN_STICK_CENTER_X;
+
+						pad.button &= ~static_cast<u16>(button_id);
+						s_hold_controller_states[PadNumber].button &= ~static_cast<u16>(button_id);
 					}
 					return 0;
 				}
+
 				// Lua function: gcpad#.hold(button, ...)
 				//
 				// Holds the given buttons until release is called for them.
@@ -107,23 +176,184 @@ namespace Movie
 					for (int i = 1; i <= num_args; ++i)
 					{
 						int button_id = luaL_checkinteger(L, i);
-						s_hold_controller_states[PadNumber].button |= button_id;
+						s_hold_controller_states[PadNumber].button |= static_cast<u16>(button_id);
 					}
 					return 0;
 				}
 
+				// Lua function: gcpad#.trigger(button, amount)
+				//
+				// Partially presses the given button (if controller supported)
+				// amount will be clamped between 0 and 255
+				static int Trigger(lua_State* L)
+				{
+					int button_id = luaL_checkinteger(L, 1);
+					int amount = luaL_checkinteger(L, 2);
+
+					MathUtil::Clamp(&amount, 0, 255);
+
+					GCPadStatus& pad = s_controller_states[PadNumber];
+					if (button_id & PAD_TRIGGER_R)
+						pad.triggerRight = amount;
+					if (button_id & PAD_TRIGGER_L)
+						pad.triggerLeft = amount;
+					if (button_id & PAD_BUTTON_A)
+						pad.analogA = amount;
+					if (button_id & PAD_BUTTON_B)
+						pad.analogB = amount;
+
+					return 0;
+				}
+
+				// Lua function: gcpad#.analog(x, y)
+				//
+				// Sets the position of the analog stick,
+				// between -127 and 127 for x and y. The neutral value is 0.
+				// These values will be clamped if out of range.
+				static int Analog(lua_State* L)
+				{
+					int x = luaL_checkinteger(L, 1);
+					int y = luaL_checkinteger(L, 2);
+
+					MathUtil::Clamp(&x, -127, 127);
+					MathUtil::Clamp(&y, -127, 127);
+
+					s_controller_states[PadNumber].stickX = x + GCPadStatus::MAIN_STICK_CENTER_X;
+					s_controller_states[PadNumber].stickY = y + GCPadStatus::MAIN_STICK_CENTER_Y;
+					return 0;
+				}
+
+				// Lua function: gcpad#.cstick(x, y)
+				//
+				// Sets the position of the C-stick,
+				// between -127 and 127 for x and y. The neutral value is 0.
+				// These values will be clamped if out of range.
+				static int CStick(lua_State* L)
+				{
+					int x = luaL_checkinteger(L, 1);
+					int y = luaL_checkinteger(L, 2);
+
+					MathUtil::Clamp(&x, -127, 127);
+					MathUtil::Clamp(&y, -127, 127);
+
+					s_controller_states[PadNumber].substickX = x + GCPadStatus::MAIN_STICK_CENTER_X;
+					s_controller_states[PadNumber].substickY = y + GCPadStatus::MAIN_STICK_CENTER_Y;
+					return 0;
+				}
 			};
 			template <int PadNum>
 			const luaL_Reg* GetPadLib()
 			{
 				static const luaL_Reg s_gcpad_lib[] = {
-					{ "press", &GCPadLib<0>::Press },
-					{ "release", &GCPadLib<0>::Release },
-					{ "hold", &GCPadLib<0>::Hold },
+					{ "press", &GCPadLib<PadNum>::Press },
+					{ "release", &GCPadLib<PadNum>::Release },
+					{ "hold", &GCPadLib<PadNum>::Hold },
+					{ "trigger", &GCPadLib<PadNum>::Trigger },
+					{ "analog", &GCPadLib<PadNum>::Analog },
+					{ "cstick", &GCPadLib<PadNum>::CStick },
 					{ nullptr, nullptr}
 				};
 				return s_gcpad_lib;
 			}
+		}
+
+		// Lua module: mem
+		namespace MemoryLib
+		{
+			int ReadU8(lua_State* L);
+			int ReadS8(lua_State* L);
+			int ReadU16(lua_State* L);
+			int ReadS16(lua_State* L);
+			int ReadU32(lua_State* L);
+			int ReadS32(lua_State* L);
+			int ReadU64(lua_State* L);
+			int ReadS64(lua_State* L);
+			int ReadString(lua_State* L);
+			int ReadF32(lua_State* L);
+			int ReadF64(lua_State* L);
+
+			int ReadU8(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushinteger(L, PowerPC::Read_U8(address));
+				return 1;
+			}
+			int ReadS8(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushinteger(L, static_cast<s8>(PowerPC::Read_U8(address)));
+				return 1;
+			}
+			int ReadU16(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushinteger(L, PowerPC::Read_U16(address));
+				return 1;
+			}
+			int ReadS16(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushinteger(L, static_cast<s16>(PowerPC::Read_U16(address)));
+				return 1;
+			}
+			int ReadU32(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushinteger(L, PowerPC::Read_U32(address));
+				return 1;
+			}
+			int ReadS32(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushinteger(L, static_cast<s32>(PowerPC::Read_U32(address)));
+				return 1;
+			}
+			int ReadU64(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushinteger(L, PowerPC::Read_U64(address));
+				return 1;
+			}
+			int ReadS64(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushinteger(L, static_cast<s64>(PowerPC::Read_U64(address)));
+				return 1;
+			}
+			int ReadString(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				size_t size = luaL_optinteger(L, 2, 0);
+				lua_pushstring(L, PowerPC::HostGetString(address, size).c_str());
+				return 1;
+			}
+			int ReadF32(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushnumber(L, PowerPC::Read_F32(address));
+				return 1;
+			}
+			int ReadF64(lua_State* L)
+			{
+				u32 address = luaL_checkinteger(L, 1);
+				lua_pushnumber(L, PowerPC::Read_F64(address));
+				return 1;
+			}
+
+			static const luaL_Reg s_memory_lib[] = {
+				{ "readu8", &ReadU8 },
+				{ "reads8", &ReadS8 },
+				{ "readu16", &ReadU16 },
+				{ "reads16", &ReadS16 },
+				{ "readu32", &ReadU32 },
+				{ "reads32", &ReadS32 },
+				{ "readu64", &ReadU64 },
+				{ "reads64", &ReadS64 },
+				{ "getstring", &ReadString},
+				{ "readf32", &ReadF32 },
+				{ "readf64", &ReadF64 },
+				{ nullptr, nullptr}
+			};
 		}
 	}
 
@@ -159,6 +389,7 @@ namespace Movie
 		RegisterLuaTable("gcpad2", Callbacks::GCPad::GetPadLib<1>());
 		RegisterLuaTable("gcpad3", Callbacks::GCPad::GetPadLib<2>());
 		RegisterLuaTable("gcpad4", Callbacks::GCPad::GetPadLib<3>());
+		RegisterLuaTable("mem", Callbacks::MemoryLib::s_memory_lib);
 
 		// GCPad constants
 		RegisterLuaConstant("Start", PAD_BUTTON_START);
@@ -173,8 +404,16 @@ namespace Movie
 		RegisterLuaConstant("DPadDown", PAD_BUTTON_DOWN);
 		RegisterLuaConstant("DPadLeft", PAD_BUTTON_LEFT);
 		RegisterLuaConstant("DPadRight", PAD_BUTTON_RIGHT);
+		RegisterLuaConstant("CStickUp", PADX_CSTICK_UP);
+		RegisterLuaConstant("CStickDown", PADX_CSTICK_DOWN);
+		RegisterLuaConstant("CStickLeft", PADX_CSTICK_LEFT);
+		RegisterLuaConstant("CStickRight", PADX_CSTICK_RIGHT);
+		RegisterLuaConstant("Up", PADX_ANALOG_UP);
+		RegisterLuaConstant("Down", PADX_ANALOG_DOWN);
+		RegisterLuaConstant("Left", PADX_ANALOG_LEFT);
+		RegisterLuaConstant("Right", PADX_ANALOG_RIGHT);
 
-		if(luaL_dofile(s_lua, filename.c_str()))
+		if (luaL_dofile(s_lua, filename.c_str()))
 		{
 			PanicAlertT("[LUA] Failed to load.\n %s", lua_tostring(s_lua, -1));
 			EndPlayInput(false);
@@ -228,44 +467,19 @@ namespace Movie
 		return static_cast<unsigned>(controllerID) < s_controller_states.size();
 	}
 
-	ControllerState GetLuaController(int controllerID)
+	void PlayControllerLua(GCPadStatus* padStatus, int controllerID)
 	{
-		ControllerState result = {};
 		if (!IsLuaControllerValid(controllerID))
 		{
 			PanicAlertT("Controller ID %d out of supported range.", controllerID);
-			return result;
+			return;
 		}
 
-		GCPadStatus& pad = s_controller_states[controllerID];
-		pad.button |= s_hold_controller_states[controllerID].button;
+		*padStatus = s_controller_states[controllerID];
+		padStatus->button |= s_hold_controller_states[controllerID].button;
 
-		// Copy pad info
-		result.Start = (pad.button & PAD_BUTTON_START) != 0;
-		result.A = (pad.button & PAD_BUTTON_A) != 0;
-		result.B = (pad.button & PAD_BUTTON_B) != 0;
-		result.X = (pad.button & PAD_BUTTON_X) != 0;
-		result.Y = (pad.button & PAD_BUTTON_Y) != 0;
-		result.Z = (pad.button & PAD_TRIGGER_Z) != 0;
-		result.L = (pad.button & PAD_TRIGGER_L) != 0;
-		result.R = (pad.button & PAD_TRIGGER_R) != 0;
-		result.DPadUp = (pad.button & PAD_BUTTON_UP) != 0;
-		result.DPadDown = (pad.button & PAD_BUTTON_DOWN) != 0;
-		result.DPadLeft = (pad.button & PAD_BUTTON_LEFT) != 0;
-		result.DPadRight = (pad.button & PAD_BUTTON_RIGHT) != 0;
-		result.TriggerL = pad.triggerLeft;
-		result.TriggerR = pad.triggerRight;
-		result.AnalogStickX = pad.stickX;
-		result.AnalogStickY = pad.stickY;
-		result.CStickX = pad.substickX;
-		result.CStickY = pad.substickY;
-
-		// Clear states
-		pad = s_neutral_pad;
-
-		return result;
+		s_controller_states[controllerID] = s_neutral_pad;
 	}
-
 
 };
 

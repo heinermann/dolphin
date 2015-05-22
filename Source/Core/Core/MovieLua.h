@@ -4,12 +4,10 @@
 
 #pragma once
 
-#include "Core/Movie.h"
-
 #include <string>
 
-struct lua_State;
 struct luaL_Reg;
+struct GCPadStatus;
 
 // LUA callbacks for movie playback
 namespace Movie
@@ -20,5 +18,6 @@ namespace Movie
 	void StopLua();
 	void AdvanceLua();
 	bool IsLuaControllerValid(int controllerID);
-	ControllerState GetLuaController(int controllerID);
+	void PlayControllerLua(GCPadStatus* padStatus, int controllerID);
 }
+

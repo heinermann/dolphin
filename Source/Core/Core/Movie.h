@@ -170,6 +170,7 @@ bool PlayInputDTM(const std::string& filename);
 bool PlayInput(const std::string& filename);
 void LoadInput(const std::string& filename);
 void ReadHeader();
+void PlayControllerDTM(GCPadStatus* PadStatus, int controllerID);
 void PlayController(GCPadStatus* PadStatus, int controllerID);
 bool PlayWiimote(int wiimote, u8* data, const struct WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key key);
 void EndPlayInput(bool cont);
