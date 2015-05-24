@@ -1,5 +1,6 @@
 #include "Common/x64Emitter.h"
 #include "VideoCommon/VertexLoaderBase.h"
+#include "VideoCommon/VideoConfig.h"
 
 class VertexLoaderX64 : public VertexLoaderBase, public Gen::X64CodeBlock
 {
@@ -8,7 +9,7 @@ public:
 
 protected:
 	std::string GetName() const override { return "VertexLoaderX64"; }
-	bool IsInitialized() override { return true; }
+	bool IsInitialized() override { return g_ActiveConfig.backend_info.bSupportsBBox; }
 	int RunVertices(DataReader src, DataReader dst, int count, int primitive) override;
 
 private:
