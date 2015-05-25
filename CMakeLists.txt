@@ -535,6 +535,8 @@ include_directories(Source/Core)
 add_subdirectory(Externals/Bochs_disasm)
 include_directories(Externals/Bochs_disasm)
 
+include_directories(Externals/cereal/include)
+
 if(NOT APPLE AND NOT ANDROID)
         check_lib(ENET enet enet/enet.h QUIET)
 endif()
