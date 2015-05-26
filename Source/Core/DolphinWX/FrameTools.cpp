@@ -1198,7 +1198,7 @@ void CFrame::DoStop()
 		if (Movie::IsRecordingInput())
 			DoRecordingSave();
 		if (Movie::IsMovieActive())
-			Movie::EndPlayInput(false);
+			Movie::EndPlayInput();
 
 		if (NetPlayDialog::GetNetPlayClient())
 			NetPlayDialog::GetNetPlayClient()->Stop();

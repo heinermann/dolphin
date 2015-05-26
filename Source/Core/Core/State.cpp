@@ -535,7 +535,7 @@ void LoadAs(const std::string& filename)
 			if (File::Exists(filename + ".dtm"))
 				Movie::LoadInput(filename + ".dtm");
 			else if (!Movie::IsJustStartingRecordingInputFromSaveState() && !Movie::IsJustStartingPlayingInputFromSaveState())
-				Movie::EndPlayInput(false);
+				Movie::EndPlayInput();
 		}
 		else
 		{

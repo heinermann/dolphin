@@ -5,7 +5,6 @@
 #include "Common/ChunkFile.h"
 #include "Core/ConfigManager.h"
 #include "Core/CoreTiming.h"
-#include "Core/Movie.h"
 #include "Core/HW/EXI.h"
 #include "Core/HW/EXI_Channel.h"
 #include "Core/HW/EXI_Device.h"

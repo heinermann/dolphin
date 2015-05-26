@@ -6,7 +6,6 @@
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
 #include "Core/Host.h"
-#include "Core/Movie.h"
 #include "Core/Debugger/Debugger_SymbolMap.h"
 #include "Core/HW/SystemTimers.h"
 #include "Core/HW/WII_IPC.h"

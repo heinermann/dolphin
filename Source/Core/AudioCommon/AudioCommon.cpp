@@ -18,7 +18,6 @@
 #include "Common/FileUtil.h"
 
 #include "Core/ConfigManager.h"
-#include "Core/Movie.h"
 
 // This shouldn't be a global, at least not here.
 SoundStream* g_sound_stream = nullptr;

@@ -130,26 +130,8 @@ GCPadStatus CSIDevice_GCController::GetPadStatus()
 	SI_GCAdapter::Input(ISIDevice::m_iDeviceNumber, &PadStatus);
 #endif
 
-	Movie::CallGCInputManip(&PadStatus, ISIDevice::m_iDeviceNumber);
-
-	Movie::SetPolledDevice();
-	if (NetPlay_GetInput(ISIDevice::m_iDeviceNumber, &PadStatus))
-	{
-	}
-	else if (Movie::IsPlayingInput())
-	{
-		Movie::PlayController(&PadStatus, ISIDevice::m_iDeviceNumber);
-		Movie::InputUpdate();
-	}
-	else if (Movie::IsRecordingInput())
-	{
-		Movie::RecordInput(&PadStatus, ISIDevice::m_iDeviceNumber);
-		Movie::InputUpdate();
-	}
-	else
-	{
-		Movie::CheckPadStatus(&PadStatus, ISIDevice::m_iDeviceNumber);
-	}
+	Movie::GetPadStatus(&PadStatus, ISIDevice::m_iDeviceNumber);
+	NetPlay_GetInput(ISIDevice::m_iDeviceNumber, &PadStatus);
 
 	return PadStatus;
 }

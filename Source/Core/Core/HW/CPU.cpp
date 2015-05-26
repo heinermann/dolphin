@@ -10,7 +10,6 @@
 #include "Core/Core.h"
 #include "Core/DSPEmulator.h"
 #include "Core/Host.h"
-#include "Core/Movie.h"
 #include "Core/HW/CPU.h"
 #include "Core/HW/DSP.h"
 #include "Core/HW/Memmap.h"

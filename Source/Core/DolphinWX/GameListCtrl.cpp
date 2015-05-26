@@ -37,7 +37,6 @@
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/CoreParameter.h"
-#include "Core/Movie.h"
 #include "Core/Boot/Boot.h"
 #include "Core/HW/DVDInterface.h"
 #include "Core/HW/WiiSaveCrypted.h"

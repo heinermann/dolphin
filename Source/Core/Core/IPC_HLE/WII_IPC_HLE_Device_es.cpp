@@ -1104,41 +1104,7 @@ u32 CWII_IPC_HLE_Device_es::ES_DIVerify(u8* _pTMD, u32 _sz)
 	File::CreateFullPath(tmdPath);
 	File::CreateFullPath(Common::GetTitleDataPath(tmdTitleID));
 
-	std::string savePath = Common::GetTitleDataPath(tmdTitleID);
-
-	// TODO: Force the game to save to another location, instead of moving the user's save.
-	if (Movie::SaveClearCallback(tmdTitleID))
-	{
-		if (File::Exists(savePath + "banner.bin"))
-		{
-			if (File::Exists(savePath + "../backup/"))
-			{
-				// The last run of this game must have been to play back a movie, so their save is already backed up.
-				File::DeleteDirRecursively(savePath);
-			}
-			else
-			{
-				#ifdef _WIN32
-					MoveFile(UTF8ToTStr(savePath).c_str(), UTF8ToTStr(savePath + "../backup/").c_str());
-				#else
-					File::CopyDir(savePath, savePath + "../backup/");
-					File::DeleteDirRecursively(savePath);
-				#endif
-			}
-		}
-	}
-	else if (File::Exists(savePath + "../backup/"))
-	{
-		// Delete the save made by a previous movie, and copy back the user's save.
-		if (File::Exists(savePath + "banner.bin"))
-			File::DeleteDirRecursively(savePath);
-		#ifdef _WIN32
-			MoveFile(UTF8ToTStr(savePath + "../backup/").c_str(), UTF8ToTStr(savePath).c_str());
-		#else
-			File::CopyDir(savePath + "../backup/", savePath);
-			File::DeleteDirRecursively(savePath + "../backup/");
-		#endif
-	}
+	Movie::SaveClearCallback(tmdTitleID);
 
 	if (!File::Exists(tmdPath))
 	{

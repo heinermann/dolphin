@@ -639,126 +639,115 @@ void Wiimote::Update()
 	u8 data[MAX_PAYLOAD];
 	memset(data, 0, sizeof(data));
 
-	Movie::SetPolledDevice();
-
 	m_status.battery = (u8)(m_options->settings[5]->GetValue() * 100);
 
 	const ReportFeatures& rptf = reporting_mode_features[m_reporting_mode - WM_REPORT_CORE];
 	s8 rptf_size = rptf.size;
-	if (Movie::IsPlayingInput() && Movie::PlayWiimote(m_index, data, rptf, m_extension->active_extension, m_ext_key))
+
+	data[0] = 0xA1;
+	data[1] = m_reporting_mode;
+
+	// core buttons
+	if (rptf.core)
+		GetButtonData(data + rptf.core);
+
+	// acceleration
+	if (rptf.accel)
+		GetAccelData(data, rptf);
+
+	// IR
+	if (rptf.ir)
+		GetIRData(data + rptf.ir, (rptf.accel != 0));
+
+	// extension
+	if (rptf.ext)
+		GetExtData(data + rptf.ext);
+
+	// hybrid Wiimote stuff (for now, it's not supported while recording)
+	if (WIIMOTE_SRC_HYBRID == g_wiimote_sources[m_index])
 	{
-		if (rptf.core)
-			m_status.buttons = *(wm_buttons*)(data + rptf.core);
-	}
-	else
-	{
-		data[0] = 0xA1;
-		data[1] = m_reporting_mode;
+		using namespace WiimoteReal;
 
-		// core buttons
-		if (rptf.core)
-			GetButtonData(data + rptf.core);
-
-		// acceleration
-		if (rptf.accel)
-			GetAccelData(data, rptf);
-
-		// IR
-		if (rptf.ir)
-			GetIRData(data + rptf.ir, (rptf.accel != 0));
-
-		// extension
-		if (rptf.ext)
-			GetExtData(data + rptf.ext);
-
-		// hybrid Wiimote stuff (for now, it's not supported while recording)
-		if (WIIMOTE_SRC_HYBRID == g_wiimote_sources[m_index] && !Movie::IsRecordingInput())
+		std::lock_guard<std::recursive_mutex> lk(g_refresh_lock);
+		if (g_wiimotes[m_index])
 		{
-			using namespace WiimoteReal;
-
-			std::lock_guard<std::recursive_mutex> lk(g_refresh_lock);
-			if (g_wiimotes[m_index])
+			const Report& rpt = g_wiimotes[m_index]->ProcessReadQueue();
+			if (!rpt.empty())
 			{
-				const Report& rpt = g_wiimotes[m_index]->ProcessReadQueue();
-				if (!rpt.empty())
+				const u8 *real_data = rpt.data();
+				switch (real_data[1])
 				{
-					const u8 *real_data = rpt.data();
-					switch (real_data[1])
+					// use data reports
+				default:
+					if (real_data[1] >= WM_REPORT_CORE)
 					{
-						// use data reports
-					default:
-						if (real_data[1] >= WM_REPORT_CORE)
-						{
-							const ReportFeatures& real_rptf = reporting_mode_features[real_data[1] - WM_REPORT_CORE];
+						const ReportFeatures& real_rptf = reporting_mode_features[real_data[1] - WM_REPORT_CORE];
 
-							// force same report type from real-Wiimote
-							if (&real_rptf != &rptf)
-								rptf_size = 0;
-
-							// core
-							// mix real-buttons with emu-buttons in the status struct, and in the report
-							if (real_rptf.core && rptf.core)
-							{
-								m_status.buttons.hex |= ((wm_buttons*)(real_data + real_rptf.core))->hex;
-								*(wm_buttons*)(data + rptf.core) = m_status.buttons;
-							}
-
-							// accel
-							// use real-accel data always i guess
-							if (real_rptf.accel && rptf.accel)
-								memcpy(data + rptf.accel, real_data + real_rptf.accel, sizeof(wm_accel));
-
-							// ir
-							// TODO
-
-							// ext
-							// use real-ext data if an emu-extention isn't chosen
-							if (real_rptf.ext && rptf.ext && (0 == m_extension->switch_extension))
-								memcpy(data + rptf.ext, real_data + real_rptf.ext, sizeof(wm_nc));  // TODO: Why NC specific?
-						}
-						else if (WM_ACK_DATA != real_data[1] || m_extension->active_extension > 0)
+						// force same report type from real-Wiimote
+						if (&real_rptf != &rptf)
 							rptf_size = 0;
-						else
-							// use real-acks if an emu-extension isn't chosen
-							rptf_size = -1;
-						break;
 
-						// use all status reports, after modification of the extension bit
-					case WM_STATUS_REPORT :
-						//if (m_extension->switch_extension)
-							//((wm_status_report*)(real_data + 2))->extension = (m_extension->active_extension > 0);
-						if (m_extension->active_extension)
-							((wm_status_report*)(real_data + 2))->extension = 1;
-						rptf_size = -1;
-						break;
+						// core
+						// mix real-buttons with emu-buttons in the status struct, and in the report
+						if (real_rptf.core && rptf.core)
+						{
+							m_status.buttons.hex |= ((wm_buttons*)(real_data + real_rptf.core))->hex;
+							*(wm_buttons*)(data + rptf.core) = m_status.buttons;
+						}
 
-						// use all read-data replies
-					case WM_READ_DATA_REPLY:
-						rptf_size = -1;
-						break;
+						// accel
+						// use real-accel data always i guess
+						if (real_rptf.accel && rptf.accel)
+							memcpy(data + rptf.accel, real_data + real_rptf.accel, sizeof(wm_accel));
 
+						// ir
+						// TODO
+
+						// ext
+						// use real-ext data if an emu-extention isn't chosen
+						if (real_rptf.ext && rptf.ext && (0 == m_extension->switch_extension))
+							memcpy(data + rptf.ext, real_data + real_rptf.ext, sizeof(wm_nc));  // TODO: Why NC specific?
 					}
+					else if (WM_ACK_DATA != real_data[1] || m_extension->active_extension > 0)
+						rptf_size = 0;
+					else
+						// use real-acks if an emu-extension isn't chosen
+						rptf_size = -1;
+					break;
 
-					// copy over report from real-Wiimote
-					if (-1 == rptf_size)
-					{
-						std::copy(rpt.begin(), rpt.end(), data);
-						rptf_size = (s8)(rpt.size());
-					}
+					// use all status reports, after modification of the extension bit
+				case WM_STATUS_REPORT :
+					//if (m_extension->switch_extension)
+						//((wm_status_report*)(real_data + 2))->extension = (m_extension->active_extension > 0);
+					if (m_extension->active_extension)
+						((wm_status_report*)(real_data + 2))->extension = 1;
+					rptf_size = -1;
+					break;
+
+					// use all read-data replies
+				case WM_READ_DATA_REPLY:
+					rptf_size = -1;
+					break;
+
+				}
+
+				// copy over report from real-Wiimote
+				if (-1 == rptf_size)
+				{
+					std::copy(rpt.begin(), rpt.end(), data);
+					rptf_size = (s8)(rpt.size());
 				}
 			}
 		}
-
-		Movie::CallWiiInputManip(data, rptf, m_index, m_extension->active_extension, m_ext_key);
 	}
+
+	Movie::UpdateWiimote(m_index, data, rptf, m_extension->active_extension, m_ext_key);
 	if (NetPlay::IsNetPlayRunning())
 	{
 		NetPlay_GetWiimoteData(m_index, data, rptf.size);
 		if (rptf.core)
 			m_status.buttons = *(wm_buttons*)(data + rptf.core);
 	}
-
-	Movie::CheckWiimoteStatus(m_index, data, rptf, m_extension->active_extension, m_ext_key);
 
 	// don't send a data report if auto reporting is off
 	if (false == m_reporting_auto && data[2] >= WM_REPORT_CORE)

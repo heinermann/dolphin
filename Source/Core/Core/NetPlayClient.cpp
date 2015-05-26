@@ -832,16 +832,6 @@ bool NetPlayClient::GetNetPads(const u8 pad_nb, GCPadStatus* pad_status)
 		Common::SleepCurrentThread(1);
 	}
 
-	if (Movie::IsRecordingInput())
-	{
-		Movie::RecordInput(pad_status, pad_nb);
-		Movie::InputUpdate();
-	}
-	else
-	{
-		Movie::CheckPadStatus(pad_status, pad_nb);
-	}
-
 	return true;
 }
 

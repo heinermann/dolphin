@@ -18,152 +18,79 @@ namespace WiimoteEmu
 struct ReportFeatures;
 }
 
-// Per-(video )Movie actions
+// De-coupling notes (TODOs):
+//  - VideoConfig calls SetGraphicsConfig() when retrieving active config
+//  - HW/EXI.cpp:
+//    - Can set SConfig::GetInstance().m_EXIDevice[0/1] to memory card
+//  - HW/EXI_DeviceMemoryCard.cpp
+//    - Can set SConfig::GetInstance().m_strMemoryCardA/B to string for movie file
+//  - HW/Wiimote.cpp
+//    - Not sure but we can probably do this elsewhere
+//  - HW/DSPLLE/DSPLLE.cpp
+//    - Possibly old. Can be achieved through UpdateWantDeterminism.
+//  - BootManager
+//    - Need to experiment, but may not need to rely on this stuff calling Movie.
+//  - HW/SI.cpp
+//    - Same as memory card, can use SConfig::GetInstance().m_SIDevice[i]
+//
+//
+// TODO: Don't forget to test netplay (coop recording)
 
 namespace Movie
 {
+	// Global declarations
+	extern bool g_bReset;
+	extern u64 g_currentFrame;
 
-// Enumerations and structs
-enum PlayMode
-{
-	MODE_NONE = 0,
-	MODE_RECORDING,
-	MODE_PLAYING
-};
+	void FrameUpdate();
+	void InputUpdate();
+	void Init();
 
-// GameCube Controller State
-#pragma pack(push,1)
-struct ControllerState
-{
-	bool Start:1, A:1, B:1, X:1, Y:1, Z:1; // Binary buttons, 6 bits
-	bool DPadUp:1, DPadDown:1,             // Binary D-Pad buttons, 4 bits
-	     DPadLeft:1, DPadRight:1;
-	bool L:1, R:1;                         // Binary triggers, 2 bits
-	bool disc:1;                           // Checks for disc being changed
-	bool reset:1;                          // Console reset button
-	bool reserved:2;                       // Reserved bits used for padding, 2 bits
+	bool IsRecordingInput();
+	bool IsJustStartingRecordingInputFromSaveState();
+	bool IsJustStartingPlayingInputFromSaveState();
+	bool IsPlayingInput();
+	bool IsMovieActive();
+	bool IsReadOnly();
+	u64  GetRecordingStartTime();
 
-	u8   TriggerL, TriggerR;               // Triggers, 16 bits
-	u8   AnalogStickX, AnalogStickY;       // Main Stick, 16 bits
-	u8   CStickX, CStickY;                 // Sub-Stick, 16 bits
-};
-static_assert(sizeof(ControllerState) == 8, "ControllerState should be 8 bytes");
-#pragma pack(pop)
+	bool IsConfigSaved();
+	bool IsStartingFromClearSave();
+	bool IsUsingMemcard(int memcard);
+	void SetGraphicsConfig();
 
-// Global declarations
-extern bool g_bReset;
-extern u64 g_currentFrame;
+	bool IsUsingPad(int controller);
+	bool IsUsingBongo(int controller);
+	void ChangeWiiPads(bool instantly = false);
 
-#pragma pack(push,1)
-struct DTMHeader
-{
-	u8 filetype[4];         // Unique Identifier (always "DTM"0x1A)
+	void DoFrameStep();
+	void SetReadOnly(bool bEnabled);
 
-	u8 gameID[6];           // The Game ID
-	bool bWii;              // Wii game
+	void SetFrameSkipping(unsigned int framesToSkip);
 
-	u8  numControllers;     // The number of connected controllers (1-4)
+	bool BeginRecordingInput(int controllers);
 
-	bool bFromSaveState;    // false indicates that the recording started from bootup, true for savestate
-	u64 frameCount;         // Number of frames in the recording
-	u64 inputCount;         // Number of input frames in recording
-	u64 lagCount;           // Number of lag frames in the recording
-	u64 uniqueID;           // (not implemented) A Unique ID comprised of: md5(time + Game ID)
-	u32 numRerecords;       // Number of rerecords/'cuts' of this TAS
-	u8  author[32];         // Author's name (encoded in UTF-8)
+	bool PlayInput(const std::string& filename);
+	void LoadInput(const std::string& filename);
+	void EndPlayInput();
+	void SaveRecording(const std::string& filename);
+	void DoState(PointerWrap &p);
+	void Shutdown();
 
-	u8  videoBackend[16];   // UTF-8 representation of the video backend
-	u8  audioEmulator[16];  // UTF-8 representation of the audio emulator
-	u8  md5[16];            // MD5 of game iso
+	// Done this way to avoid mixing of core and gui code
+	typedef void(*GCManipFunction)(GCPadStatus*, int);
+	typedef void(*WiiManipFunction)(u8*, WiimoteEmu::ReportFeatures, int, int, wiimote_key);
 
-	u64 recordingStartTime; // seconds since 1970 that recording started (used for RTC)
+	// Callback to have the TAS dialog write pad status
+	void SetGCInputManip(GCManipFunction);
+	void SetWiiInputManip(WiiManipFunction);
 
-	bool bSaveConfig;       // Loads the settings below on startup if true
-	bool bSkipIdle;
-	bool bDualCore;
-	bool bProgressive;
-	bool bDSPHLE;
-	bool bFastDiscSpeed;
-	u8   CPUCore;           // 0 = interpreter, 1 = JIT, 2 = JITIL
-	bool bEFBAccessEnable;
-	bool bEFBCopyEnable;
-	bool bSkipEFBCopyToRam;
-	bool bEFBCopyCacheEnable;
-	bool bEFBEmulateFormatChanges;
-	bool bUseXFB;
-	bool bUseRealXFB;
-	u8   memcards;
-	bool bClearSave;        // Create a new memory card when playing back a movie if true
-	u8   bongos;
-	bool bSyncGPU;
-	bool bNetPlay;
-	u8   reserved[13];      // Padding for any new config options
-	u8   discChange[40];    // Name of iso file to switch to, for two disc games.
-	u8   revision[20];      // Git hash
-	u32  DSPiromHash;
-	u32  DSPcoefHash;
-	u64  tickCount;	        // Number of ticks in the recording
-	u8   reserved2[11];     // Make heading 256 bytes, just because we can
-};
-static_assert(sizeof(DTMHeader) == 256, "DTMHeader should be 256 bytes");
+	void ChangeDiscCallback(const std::string& newFileName);
+	void SaveClearCallback(u64 tmdTitleId);
+	std::string GetDebugInfo();
+	void SetStartupOptions(SCoreStartupParameter* StartUp);
 
-#pragma pack(pop)
-
-void FrameUpdate();
-void InputUpdate();
-void Init();
-
-void SetPolledDevice();
-
-bool IsRecordingInput();
-bool IsJustStartingRecordingInputFromSaveState();
-bool IsJustStartingPlayingInputFromSaveState();
-bool IsPlayingInput();
-bool IsMovieActive();
-bool IsReadOnly();
-u64  GetRecordingStartTime();
-
-bool IsConfigSaved();
-bool IsStartingFromClearSave();
-bool IsUsingMemcard(int memcard);
-void SetGraphicsConfig();
-bool IsNetPlayRecording();
-
-bool IsUsingPad(int controller);
-bool IsUsingBongo(int controller);
-void ChangeWiiPads(bool instantly = false);
-
-void DoFrameStep();
-void SetReadOnly(bool bEnabled);
-
-void SetFrameSkipping(unsigned int framesToSkip);
-
-bool BeginRecordingInput(int controllers);
-void RecordInput(GCPadStatus* PadStatus, int controllerID);
-
-bool PlayInput(const std::string& filename);
-void LoadInput(const std::string& filename);
-void PlayController(GCPadStatus* PadStatus, int controllerID);
-bool PlayWiimote(int wiimote, u8* data, const struct WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key key);
-void EndPlayInput(bool cont);
-void SaveRecording(const std::string& filename);
-void DoState(PointerWrap &p);
-void Shutdown();
-void CheckPadStatus(GCPadStatus* PadStatus, int controllerID);
-void CheckWiimoteStatus(int wiimote, u8* data, const struct WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key key);
-
-// Done this way to avoid mixing of core and gui code
-typedef void(*GCManipFunction)(GCPadStatus*, int);
-typedef void(*WiiManipFunction)(u8*, WiimoteEmu::ReportFeatures, int, int, wiimote_key);
-
-void SetGCInputManip(GCManipFunction);
-void SetWiiInputManip(WiiManipFunction);
-void CallGCInputManip(GCPadStatus* PadStatus, int controllerID);
-void CallWiiInputManip(u8* core, WiimoteEmu::ReportFeatures rptf, int controllerID, int ext, const wiimote_key key);
-
-void ChangeDiscCallback(const std::string& newFileName);
-bool SaveClearCallback(u64 tmdTitleId);
-std::string GetDebugInfo();
-void SetStartupOptions(SCoreStartupParameter* StartUp);
+	void GetPadStatus(GCPadStatus* pad_status, int controller_id);
+	void UpdateWiimote(int wiimote, u8* data, const struct WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key& key);
 
 }
