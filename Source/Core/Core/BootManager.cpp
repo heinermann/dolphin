@@ -208,25 +208,7 @@ bool BootCore(const std::string& _rFilename)
 
 	StartUp.m_GPUDeterminismMode = ParseGPUDeterminismMode(StartUp.m_strGPUDeterminismMode);
 
-	// Movie settings
-	if (Movie::IsPlayingInput() && Movie::IsConfigSaved())
-	{
-		StartUp.bCPUThread = Movie::IsDualCore();
-		StartUp.bSkipIdle = Movie::IsSkipIdle();
-		StartUp.bDSPHLE = Movie::IsDSPHLE();
-		StartUp.bProgressive = Movie::IsProgressive();
-		StartUp.bFastDiscSpeed = Movie::IsFastDiscSpeed();
-		StartUp.iCPUCore = Movie::GetCPUMode();
-		StartUp.bSyncGPU = Movie::IsSyncGPU();
-		for (int i = 0; i < 2; ++i)
-		{
-			if (Movie::IsUsingMemcard(i) && Movie::IsStartingFromClearSave() && !StartUp.bWii)
-			{
-				if (File::Exists(File::GetUserPath(D_GCUSER_IDX) + StringFromFormat("Movie%s.raw", (i == 0) ? "A" : "B")))
-					File::Delete(File::GetUserPath(D_GCUSER_IDX) + StringFromFormat("Movie%s.raw", (i == 0) ? "A" : "B"));
-			}
-		}
-	}
+	Movie::SetStartupOptions(&StartUp);
 
 	if (NetPlay::IsNetPlayRunning())
 	{

@@ -11,6 +11,7 @@
 struct GCPadStatus;
 class PointerWrap;
 struct wiimote_key;
+struct SCoreStartupParameter;
 
 namespace WiimoteEmu
 {
@@ -50,13 +51,8 @@ static_assert(sizeof(ControllerState) == 8, "ControllerState should be 8 bytes")
 #pragma pack(pop)
 
 // Global declarations
-extern bool g_bDiscChange, g_bClearSave, g_bReset;
-extern u64 g_titleID;
-
-extern u64 g_currentFrame, g_totalFrames;
-extern u64 g_currentLagCount;
-extern u64 g_currentInputCount, g_totalInputCount;
-extern std::string g_discChange;
+extern bool g_bReset;
+extern u64 g_currentFrame;
 
 #pragma pack(push,1)
 struct DTMHeader
@@ -120,7 +116,6 @@ void Init();
 void SetPolledDevice();
 
 bool IsRecordingInput();
-bool IsRecordingInputFromSaveState();
 bool IsJustStartingRecordingInputFromSaveState();
 bool IsJustStartingPlayingInputFromSaveState();
 bool IsPlayingInput();
@@ -129,51 +124,33 @@ bool IsReadOnly();
 u64  GetRecordingStartTime();
 
 bool IsConfigSaved();
-bool IsDualCore();
-bool IsProgressive();
-bool IsSkipIdle();
-bool IsDSPHLE();
-bool IsFastDiscSpeed();
-int  GetCPUMode();
 bool IsStartingFromClearSave();
 bool IsUsingMemcard(int memcard);
-bool IsSyncGPU();
 void SetGraphicsConfig();
-void GetSettings();
 bool IsNetPlayRecording();
 
 bool IsUsingPad(int controller);
-bool IsUsingWiimote(int wiimote);
 bool IsUsingBongo(int controller);
-void ChangePads(bool instantly = false);
 void ChangeWiiPads(bool instantly = false);
 
 void DoFrameStep();
-void SetFrameStopping(bool bEnabled);
 void SetReadOnly(bool bEnabled);
 
 void SetFrameSkipping(unsigned int framesToSkip);
-void FrameSkipping();
 
 bool BeginRecordingInput(int controllers);
 void RecordInput(GCPadStatus* PadStatus, int controllerID);
-void RecordWiimote(int wiimote, u8 *data, u8 size);
 
 bool PlayInput(const std::string& filename);
 void LoadInput(const std::string& filename);
-void ReadHeader();
 void PlayController(GCPadStatus* PadStatus, int controllerID);
 bool PlayWiimote(int wiimote, u8* data, const struct WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key key);
 void EndPlayInput(bool cont);
 void SaveRecording(const std::string& filename);
 void DoState(PointerWrap &p);
-void CheckMD5();
-void GetMD5();
 void Shutdown();
 void CheckPadStatus(GCPadStatus* PadStatus, int controllerID);
 void CheckWiimoteStatus(int wiimote, u8* data, const struct WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key key);
-
-std::string GetInputDisplay();
 
 // Done this way to avoid mixing of core and gui code
 typedef void(*GCManipFunction)(GCPadStatus*, int);
@@ -183,4 +160,10 @@ void SetGCInputManip(GCManipFunction);
 void SetWiiInputManip(WiiManipFunction);
 void CallGCInputManip(GCPadStatus* PadStatus, int controllerID);
 void CallWiiInputManip(u8* core, WiimoteEmu::ReportFeatures rptf, int controllerID, int ext, const wiimote_key key);
+
+void ChangeDiscCallback(const std::string& newFileName);
+bool SaveClearCallback(u64 tmdTitleId);
+std::string GetDebugInfo();
+void SetStartupOptions(SCoreStartupParameter* StartUp);
+
 }

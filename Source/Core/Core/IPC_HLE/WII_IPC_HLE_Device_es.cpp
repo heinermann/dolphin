@@ -1104,19 +1104,10 @@ u32 CWII_IPC_HLE_Device_es::ES_DIVerify(u8* _pTMD, u32 _sz)
 	File::CreateFullPath(tmdPath);
 	File::CreateFullPath(Common::GetTitleDataPath(tmdTitleID));
 
-	Movie::g_titleID = tmdTitleID;
 	std::string savePath = Common::GetTitleDataPath(tmdTitleID);
-	if (Movie::IsRecordingInput())
-	{
-		// TODO: Check for the actual save data
-		if (File::Exists(savePath + "banner.bin"))
-			Movie::g_bClearSave = false;
-		else
-			Movie::g_bClearSave = true;
-	}
 
 	// TODO: Force the game to save to another location, instead of moving the user's save.
-	if (Movie::IsPlayingInput() && Movie::IsConfigSaved() && Movie::IsStartingFromClearSave())
+	if (Movie::SaveClearCallback(tmdTitleID))
 	{
 		if (File::Exists(savePath + "banner.bin"))
 		{

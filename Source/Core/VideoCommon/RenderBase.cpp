@@ -288,36 +288,13 @@ void Renderer::DrawDebugText()
 {
 	std::string final_yellow, final_cyan;
 
-	if (g_ActiveConfig.bShowFPS || SConfig::GetInstance().m_ShowFrameCount)
-	{
-		std::string fps = "";
-		if (g_ActiveConfig.bShowFPS)
-			final_cyan += StringFromFormat("FPS: %d", g_renderer->m_fps_counter.m_fps);
+	if (g_ActiveConfig.bShowFPS)
+		final_cyan += StringFromFormat("FPS: %d\n", g_renderer->m_fps_counter.m_fps);
 
-		if (g_ActiveConfig.bShowFPS && SConfig::GetInstance().m_ShowFrameCount)
-			final_cyan += " - ";
-		if (SConfig::GetInstance().m_ShowFrameCount)
-		{
-			final_cyan += StringFromFormat("Frame: %llu", (unsigned long long) Movie::g_currentFrame);
-			if (Movie::IsPlayingInput())
-				final_cyan += StringFromFormat(" / %llu", (unsigned long long) Movie::g_totalFrames);
-		}
+	final_cyan += Movie::GetDebugInfo();
 
-		final_cyan += "\n";
-		final_yellow += "\n";
-	}
-
-	if (SConfig::GetInstance().m_ShowLag)
-	{
-		final_cyan += StringFromFormat("Lag: %" PRIu64 "\n", Movie::g_currentLagCount);
-		final_yellow += "\n";
-	}
-
-	if (SConfig::GetInstance().m_ShowInputDisplay)
-	{
-		final_cyan += Movie::GetInputDisplay();
-		final_yellow += "\n";
-	}
+	size_t num_newlines = std::count(final_cyan.begin(), final_cyan.end(), '\n');
+	final_yellow.append(num_newlines, '\n');
 
 	// OSD Menu messages
 	if (OSDChoice > 0)

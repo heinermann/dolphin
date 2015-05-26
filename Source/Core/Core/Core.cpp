@@ -758,42 +758,34 @@ void UpdateTitle()
 	std::string SSettings = StringFromFormat("%s %s | %s | %s", cpu_core_base->GetName(), _CoreParameter.bCPUThread ? "DC" : "SC",
 		g_video_backend->GetDisplayName().c_str(), _CoreParameter.bDSPHLE ? "HLE" : "LLE");
 
-	std::string SFPS;
-
-	if (Movie::IsPlayingInput())
-		SFPS = StringFromFormat("VI: %u/%u - Input: %u/%u - FPS: %.0f - VPS: %.0f - %.0f%%", (u32)Movie::g_currentFrame, (u32)Movie::g_totalFrames, (u32)Movie::g_currentInputCount, (u32)Movie::g_totalInputCount, FPS, VPS, Speed);
-	else if (Movie::IsRecordingInput())
-		SFPS = StringFromFormat("VI: %u - Input: %u - FPS: %.0f - VPS: %.0f - %.0f%%", (u32)Movie::g_currentFrame, (u32)Movie::g_currentInputCount, FPS, VPS, Speed);
-	else
+	std::string SFPS = StringFromFormat("FPS: %.0f - VPS: %.0f - %.0f%%", FPS, VPS, Speed);
+	if (SConfig::GetInstance().m_InterfaceExtendedFPSInfo)
 	{
-		SFPS = StringFromFormat("FPS: %.0f - VPS: %.0f - %.0f%%", FPS, VPS, Speed);
-		if (SConfig::GetInstance().m_InterfaceExtendedFPSInfo)
-		{
-			// Use extended or summary information. The summary information does not print the ticks data,
-			// that's more of a debugging interest, it can always be optional of course if someone is interested.
-			static u64 ticks = 0;
-			static u64 idleTicks = 0;
-			u64 newTicks = CoreTiming::GetTicks();
-			u64 newIdleTicks = CoreTiming::GetIdleTicks();
+		// Use extended or summary information. The summary information does not print the ticks data,
+		// that's more of a debugging interest, it can always be optional of course if someone is interested.
+		static u64 ticks = 0;
+		static u64 idleTicks = 0;
+		u64 newTicks = CoreTiming::GetTicks();
+		u64 newIdleTicks = CoreTiming::GetIdleTicks();
 
-			u64 diff = (newTicks - ticks) / 1000000;
-			u64 idleDiff = (newIdleTicks - idleTicks) / 1000000;
+		u64 diff = (newTicks - ticks) / 1000000;
+		u64 idleDiff = (newIdleTicks - idleTicks) / 1000000;
 
-			ticks = newTicks;
-			idleTicks = newIdleTicks;
+		ticks = newTicks;
+		idleTicks = newIdleTicks;
 
-			float TicksPercentage = (float)diff / (float)(SystemTimers::GetTicksPerSecond() / 1000000) * 100;
+		float TicksPercentage = (float)diff / (float)(SystemTimers::GetTicksPerSecond() / 1000000) * 100;
 
-			SFPS += StringFromFormat(" | CPU: %s%i MHz [Real: %i + IdleSkip: %i] / %i MHz (%s%3.0f%%)",
-					_CoreParameter.bSkipIdle ? "~" : "",
-					(int)(diff),
-					(int)(diff - idleDiff),
-					(int)(idleDiff),
-					SystemTimers::GetTicksPerSecond() / 1000000,
-					_CoreParameter.bSkipIdle ? "~" : "",
-					TicksPercentage);
-		}
+		SFPS += StringFromFormat(" | CPU: %s%i MHz [Real: %i + IdleSkip: %i] / %i MHz (%s%3.0f%%)",
+				_CoreParameter.bSkipIdle ? "~" : "",
+				(int)(diff),
+				(int)(diff - idleDiff),
+				(int)(idleDiff),
+				SystemTimers::GetTicksPerSecond() / 1000000,
+				_CoreParameter.bSkipIdle ? "~" : "",
+				TicksPercentage);
 	}
+
 	// This is our final "frame counter" string
 	std::string SMessage = StringFromFormat("%s | %s", SSettings.c_str(), SFPS.c_str());
 
