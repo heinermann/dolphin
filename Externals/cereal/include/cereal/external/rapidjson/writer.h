@@ -60,7 +60,7 @@ public:
 	Writer& Int(int i)                      { Prefix(kNumberType); WriteInt(i);			return *this;             }
 	Writer& Uint(unsigned u)                { Prefix(kNumberType); WriteUint(u);		return *this;             }
 	Writer& Int64(int64_t i64)              { Prefix(kNumberType); WriteInt64(i64);		return *this;           }
-	Writer& Uint64(uint64_t u64)            { Prefix(kNumberType); WriteUint64(u64);	return *this;           }
+	Writer& Uint64(uint64_t val)            { Prefix(kNumberType); WriteUint64(val);	return *this;           }
 	Writer& Double(double d)                { Prefix(kNumberType); WriteDouble(d);		return *this;           }
 	Writer& LongDouble(long double d)       { Prefix(kNumberType); WriteLongDouble(d);		return *this;       }
 	Writer& LongLong(long long d)           { Prefix(kNumberType); WriteLongLong(d);		return *this;         }
@@ -162,13 +162,13 @@ protected:
 		WriteUint64((uint64_t)i64);
 	}
 
-	void WriteUint64(uint64_t u64) {
+	void WriteUint64(uint64_t val) {
 		char buffer[20];
 		char *p = buffer;
 		do {
-			*p++ = char(u64 % 10) + '0';
-			u64 /= 10;
-		} while (u64 > 0);
+			*p++ = char(val % 10) + '0';
+			val /= 10;
+		} while (val > 0);
 
 		do {
 			--p;

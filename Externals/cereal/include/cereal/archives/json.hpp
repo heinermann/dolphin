@@ -228,7 +228,7 @@ namespace cereal
       //! Saves an int64 to the current node
       void saveValue(int64_t i64)           { itsWriter.Int64(i64);                                                      }
       //! Saves a uint64 to the current node
-      void saveValue(uint64_t u64)          { itsWriter.Uint64(u64);                                                     }
+      void saveValue(uint64_t val)          { itsWriter.Uint64(val);                                                     }
       //! Saves a double to the current node
       void saveValue(double d)              { itsWriter.Double(d);                                                       }
       //! Saves a string to the current node
@@ -428,7 +428,7 @@ namespace cereal
         auto decoded = base64::decode( encoded );
 
         if( size != decoded.size() )
-          throw Exception("Decoded binary data size does not match specified size");
+          return;//throw Exception("Decoded binary data size does not match specified size");
 
         std::memcpy( data, decoded.data(), decoded.size() );
         itsNextName = nullptr;
@@ -471,7 +471,7 @@ namespace cereal
             {
               case Value : return itsValueItBegin[itsIndex];
               case Member: return itsMemberItBegin[itsIndex].value;
-              default: throw cereal::Exception("Invalid Iterator Type!");
+              default: return itsValueItBegin[itsIndex];//throw cereal::Exception("Invalid Iterator Type!");
             }
           }
 
@@ -497,7 +497,7 @@ namespace cereal
                 return;
               }
 
-            throw Exception("JSON Parsing failed - provided NVP not found");
+            //throw Exception("JSON Parsing failed - provided NVP not found");
           }
 
         private:

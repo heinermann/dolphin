@@ -82,7 +82,7 @@ public:
 
 	//! Constructor for unsigned value.
 	GenericValue(unsigned u) : flags_(kNumberUintFlag) {
-		data_.n.u64 = u;
+		data_.n.u64_val = u;
 		if (!(u & 0x80000000))
 			flags_ |= kIntFlag | kInt64Flag;
 	}
@@ -102,13 +102,13 @@ public:
 	}
 
 	//! Constructor for uint64_t value.
-	GenericValue(uint64_t u64) : flags_(kNumberUint64Flag) {
-		data_.n.u64 = u64;
-		if (!(u64 & 0x8000000000000000ULL))
+	GenericValue(uint64_t val) : flags_(kNumberUint64Flag) {
+		data_.n.u64_val = val;
+		if (!(val & 0x8000000000000000ULL))
 			flags_ |= kInt64Flag;
-		if (!(u64 & 0xFFFFFFFF00000000ULL))
+		if (!(val & 0xFFFFFFFF00000000ULL))
 			flags_ |= kUintFlag;
-		if (!(u64 & 0xFFFFFFFF80000000ULL))
+		if (!(val & 0xFFFFFFFF80000000ULL))
 			flags_ |= kIntFlag;
 	}
 
@@ -422,7 +422,7 @@ int z = a[0u].GetInt();				// This works too.
 	int GetInt() const			{ RAPIDJSON_ASSERT(flags_ & kIntFlag);   return data_.n.i.i;   }
 	unsigned GetUint() const	{ RAPIDJSON_ASSERT(flags_ & kUintFlag);  return data_.n.u.u;   }
 	int64_t GetInt64() const	{ RAPIDJSON_ASSERT(flags_ & kInt64Flag); return data_.n.i64; }
-	uint64_t GetUint64() const	{ RAPIDJSON_ASSERT(flags_ & kUint64Flag); return data_.n.u64; }
+	uint64_t GetUint64() const	{ RAPIDJSON_ASSERT(flags_ & kUint64Flag); return data_.n.u64_val; }
 
 	double GetDouble() const {
 		RAPIDJSON_ASSERT(IsNumber());
@@ -430,13 +430,13 @@ int z = a[0u].GetInt();				// This works too.
 		if ((flags_ & kIntFlag) != 0)					return data_.n.i.i;	// int -> double
 		if ((flags_ & kUintFlag) != 0)					return data_.n.u.u;	// unsigned -> double
 		if ((flags_ & kInt64Flag) != 0)					return (double)data_.n.i64; // int64_t -> double (may lose precision)
-		RAPIDJSON_ASSERT((flags_ & kUint64Flag) != 0);	return (double)data_.n.u64;	// uint64_t -> double (may lose precision)
+		RAPIDJSON_ASSERT((flags_ & kUint64Flag) != 0);	return (double)data_.n.u64_val;	// uint64_t -> double (may lose precision)
 	}
 
 	GenericValue& SetInt(int i)				{ this->~GenericValue(); new (this) GenericValue(i);	return *this; }
 	GenericValue& SetUint(unsigned u)		{ this->~GenericValue(); new (this) GenericValue(u);	return *this; }
 	GenericValue& SetInt64(int64_t i64)		{ this->~GenericValue(); new (this) GenericValue(i64);	return *this; }
-	GenericValue& SetUint64(uint64_t u64)	{ this->~GenericValue(); new (this) GenericValue(u64);	return *this; }
+	GenericValue& SetUint64(uint64_t val)	{ this->~GenericValue(); new (this) GenericValue(val);	return *this; }
 	GenericValue& SetDouble(double d)		{ this->~GenericValue(); new (this) GenericValue(d);	return *this; }
 
 	//@}
@@ -521,7 +521,7 @@ int z = a[0u].GetInt();				// This works too.
 			if (IsInt())			handler.Int(data_.n.i.i);
 			else if (IsUint())		handler.Uint(data_.n.u.u);
 			else if (IsInt64())		handler.Int64(data_.n.i64);
-			else if (IsUint64())	handler.Uint64(data_.n.u64);
+			else if (IsUint64())	handler.Uint64(data_.n.u64_val);
 			else					handler.Double(data_.n.d);
 			break;
 		}
@@ -591,7 +591,7 @@ private:
 		}u;
 #endif
 		int64_t i64;
-		uint64_t u64;
+		uint64_t u64_val;
 		double d;
 	};	// 8 bytes
 
