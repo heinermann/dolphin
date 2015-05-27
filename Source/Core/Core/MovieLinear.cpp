@@ -7,11 +7,8 @@
 #define RAPIDJSON_ASSERT(x)
 #endif
 
-#define RAPIDXML_NO_EXCEPTIONS
-
 #include <cereal/archives/json.hpp>
 #include <cereal/archives/portable_binary.hpp>
-#include <cereal/archives/xml.hpp>
 #include <cereal/cereal.hpp>
 #include <cereal/types/map.hpp>
 #include <cereal/types/string.hpp>
@@ -26,12 +23,6 @@
 #include "Common/MsgHandler.h"
 #include "Core/Movie.h"
 #include "Core/MovieLinear.h"
-
-void rapidxml::parse_error_handler(const char *what, void *where)
-{
-	PanicAlert("XML Parse Error: %s", what);
-	std::abort();
-}
 
 namespace cereal
 {
@@ -176,12 +167,6 @@ namespace Movie
 			cereal::JSONInputArchive archive(input_file);
 			serialize(archive, m_data);
 		}
-		else if (extension == ".dixml")
-		{
-			std::ifstream input_file(filename);
-			cereal::XMLInputArchive archive(input_file);
-			serialize(archive, m_data);
-		}
 		else if (extension == ".dibin")
 		{
 			std::ifstream input_file(filename, std::ios::binary);
@@ -245,12 +230,6 @@ namespace Movie
 					cereal::JSONOutputArchive::Options::IndentChar::tab, 1);
 			cereal::JSONOutputArchive archive(output_file, opts);
 
-			serialize(archive, m_data);
-		}
-		else if (extension == ".dixml")
-		{
-			std::ofstream output_file(filename);
-			cereal::XMLOutputArchive archive(output_file);
 			serialize(archive, m_data);
 		}
 		else if (extension == ".dibin")

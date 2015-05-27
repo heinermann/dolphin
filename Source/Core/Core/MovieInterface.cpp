@@ -12,9 +12,7 @@ namespace Movie
 	PlaybackInterfacePtr PlaybackInterface::CreateInterface(const std::string& filename)
 	{
 		const std::string extension = filename.substr(std::min(filename.size(), filename.rfind('.')));
-		if (extension == ".dijson"
-				|| extension == ".dixml"
-				|| extension == ".dibin")
+		if (extension == ".dijson" || extension == ".dibin")
 		{
 			return PlaybackInterfacePtr(new LinearPlayback(filename));
 		}
