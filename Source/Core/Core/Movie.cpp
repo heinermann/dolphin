@@ -17,6 +17,8 @@
 #include "Core/CoreParameter.h"
 #include "Core/CoreTiming.h"
 #include "Core/Movie.h"
+#include "Core/MovieInterface.h"
+#include "Core/MovieLinear.h"
 #include "Core/NetPlayProto.h"
 #include "Core/State.h"
 #include "Core/DSP/DSPCore.h"
@@ -49,6 +51,8 @@ enum PlayMode
 	MODE_PLAYING
 };
 static PlayMode s_playMode = MODE_NONE;
+static PlaybackInterfacePtr s_playback_interface;
+static RecordingInterfacePtr s_recording_interface;
 
 static u32 s_framesToSkip = 0, s_frameSkipCounter = 0;
 
@@ -65,7 +69,7 @@ static bool s_bDiscChange = false;
 bool g_bReset = false;
 static std::string s_discChange = "";
 static u64 s_titleID = 0;
-static u8 s_bongos, s_memcards;
+static u8 s_bongos;
 
 static bool s_bRecordingFromSaveState = false;
 static bool s_bPolled = false;
@@ -76,7 +80,6 @@ static GCManipFunction gcmfunc = nullptr;
 static WiiManipFunction wiimfunc = nullptr;
 
 void FrameSkipping();
-void RecordWiimote(int wiimote, u8 *data, u8 size);
 void GetSettings();
 
 static std::string GetInputDisplay()
@@ -107,6 +110,11 @@ void FrameUpdate()
 	if (!s_bPolled)
 		s_currentLagCount++;
 
+	if (s_playback_interface)
+		s_playback_interface->FrameAdvance();
+	if (s_recording_interface)
+		s_recording_interface->FrameAdvance();
+
 	if (s_bFrameStep)
 	{
 		Core::SetState(Core::CORE_PAUSE);
@@ -125,6 +133,8 @@ void Init()
 {
 	s_bPolled = false;
 	s_bFrameStep = false;
+
+	// Retrieving game's MD5 went here
 
 	if (IsRecordingInput())
 	{
@@ -218,12 +228,12 @@ static void CallWiiInputManip(u8* data, WiimoteEmu::ReportFeatures rptf, int con
 
 bool IsRecordingInput()
 {
-	return (s_playMode == MODE_RECORDING);
+	return s_recording_interface.get() != nullptr;
 }
 
 static bool IsRecordingInputFromSaveState()
 {
-	return s_bRecordingFromSaveState;
+	return s_bRecordingFromSaveState == true;
 }
 
 bool IsJustStartingRecordingInputFromSaveState()
@@ -238,12 +248,12 @@ bool IsJustStartingPlayingInputFromSaveState()
 
 bool IsPlayingInput()
 {
-	return (s_playMode == MODE_PLAYING);
+	return s_playback_interface.get() != nullptr;
 }
 
 bool IsMovieActive()
 {
-	return s_playMode != MODE_NONE;
+	return IsPlayingInput() || IsRecordingInput();
 }
 
 bool IsReadOnly()
@@ -283,7 +293,7 @@ bool IsStartingFromClearSave()
 
 bool IsUsingMemcard(int memcard)
 {
-	return (s_memcards & (1 << memcard)) != 0;
+	return true;
 }
 
 static void ChangePads(bool instantly)
@@ -337,7 +347,6 @@ bool BeginRecordingInput(int controllers)
 	g_currentFrame = 0;
 	s_currentLagCount = 0;
 	s_bongos = 0;
-	s_memcards = 0;
 	if (NetPlay::IsNetPlayRunning())
 	{
 		s_recordingStartTime = g_netplay_initial_gctime;
@@ -372,6 +381,8 @@ bool BeginRecordingInput(int controllers)
 		GetSettings();
 	}
 	s_playMode = MODE_RECORDING;
+
+	s_recording_interface.reset(new LinearRecording());
 
 	Core::UpdateWantDeterminism();
 
@@ -573,24 +584,6 @@ static void SetWiiInputDisplayString(int remoteID, u8* const data, const Wiimote
 	s_InputDisplay[controllerID].append("\n");
 }
 
-static void RecordInput(GCPadStatus* PadStatus, int controllerID)
-{
-	if (!IsRecordingInput() || !IsUsingPad(controllerID))
-		return;
-
-	// FUNCTION: Takes the given pad status and writes it to file.
-	// Effectively recording the pad's input
-}
-
-void RecordWiimote(int wiimote, u8 *data, u8 size)
-{
-	if (!IsRecordingInput() || !IsUsingWiimote(wiimote))
-		return;
-
-	// FUNCTION: Takes the given wiimote status and writes it to file.
-	// Effectively recording the wiimote's input
-}
-
 bool PlayInput(const std::string& filename)
 {
 	if (s_playMode != MODE_NONE || !File::Exists(filename))
@@ -601,6 +594,9 @@ bool PlayInput(const std::string& filename)
 
 	// Loads the input file and readies everything for input playback.
 	// If loading is successful, then we continue...
+	s_playback_interface = PlaybackInterface::CreateInterface(filename);
+	if (!s_playback_interface)
+		return false;
 
 	s_playMode = MODE_PLAYING;
 
@@ -637,50 +633,6 @@ void LoadInput(const std::string& filename)
 	// Then decides which playback state to go into
 }
 
-// Called when the GCController polls for input (should be renamed?)
-static void PlayController(GCPadStatus* PadStatus, int controllerID)
-{
-	// Correct playback is entirely dependent on the emulator polling the controllers
-	// in the same order done during recording
-	if (!IsPlayingInput() || !IsUsingPad(controllerID))
-		return;
-
-	// PadStatus is then set to whatever the movie playback should have.
-
-	/*
-	// How old Movie disc changing happened. Seems like more of a hack?
-	{
-		// This implementation assumes the disc change will only happen once. Trying to change more than that will cause
-		// it to load the last disc every time. As far as i know though, there are no 3+ disc games, so this should be fine.
-		Core::SetState(Core::CORE_PAUSE);
-		bool found = false;
-		std::string path;
-		for (size_t i = 0; i < SConfig::GetInstance().m_ISOFolder.size(); ++i)
-		{
-			path = SConfig::GetInstance().m_ISOFolder[i];
-			if (File::Exists(path + '/' + s_discChange))
-			{
-				found = true;
-				break;
-			}
-		}
-		if (found)
-		{
-			DVDInterface::ChangeDisc(path + '/' + s_discChange);
-			Core::SetState(Core::CORE_RUN);
-		}
-		else
-		{
-			PanicAlertT("Change the disc to %s", s_discChange.c_str());
-		}
-	}*/
-
-	// How resetting happens. Much easier.
-	// ProcessorInterface::ResetButton_Tap();
-
-	// Optionally end input playback
-}
-
 // Callback when GCPad gets pad status
 // Note sure about netplay.
 void GetPadStatus(GCPadStatus* pad_status, int controller_id)
@@ -690,29 +642,18 @@ void GetPadStatus(GCPadStatus* pad_status, int controller_id)
 
 	if (IsPlayingInput() && IsUsingPad(controller_id))
 	{
-		PlayController(pad_status, controller_id);
+		s_playback_interface->PlayController(pad_status, controller_id);
 	}
 
 	// This is where netplay update would take place
 
 	if (IsRecordingInput() && IsUsingPad(controller_id))
 	{
-		RecordInput(pad_status, controller_id);
+		s_recording_interface->RecordController(pad_status, controller_id);
 	}
 
 	InputUpdate();
 	SetInputDisplayString(pad_status, controller_id);
-}
-
-static bool PlayWiimote(int wiimote, u8 *data, const WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key key)
-{
-	if (!IsPlayingInput() || !IsUsingWiimote(wiimote))
-		return false;
-
-	// Same as GCPad input
-
-	// Optionally end input playback
-	return true;
 }
 
 // Callback when Wiimote is updated
@@ -723,14 +664,14 @@ void UpdateWiimote(int wiimote, u8* data, const WiimoteEmu::ReportFeatures& rptf
 
 	if (IsPlayingInput() && IsUsingWiimote(wiimote))
 	{
-		PlayWiimote(wiimote, data, rptf, ext, key);
+		s_playback_interface->PlayWiimote(wiimote, data, rptf, ext, key);
 	}
 
 	// This is where netplay update and misc stuff would take place
 
 	if (IsRecordingInput() && IsUsingWiimote(wiimote))
 	{
-		RecordWiimote(wiimote, data, rptf.size);
+		s_recording_interface->RecordWiimote(wiimote, data, rptf, ext, key);
 	}
 
 	InputUpdate();
@@ -741,6 +682,8 @@ void EndPlayInput()
 {
 	if (s_playMode != MODE_NONE)
 	{
+		s_playback_interface.reset(nullptr);
+
 		s_playMode = MODE_NONE;
 		Core::UpdateWantDeterminism();
 		Core::DisplayMessage("Movie End.", 2000);
@@ -751,6 +694,8 @@ void EndPlayInput()
 void SaveRecording(const std::string& filename)
 {
 	// Saves playback file.
+	if (s_recording_interface)
+		s_recording_interface->SaveRecording(filename);
 
 	// Additionally, save state file with this
 	// if (success && s_bRecordingFromSaveState)
@@ -803,6 +748,8 @@ void GetSettings()
 
 void Shutdown()
 {
+	s_playback_interface.reset(nullptr);
+	s_recording_interface.reset(nullptr);
 	// Cleanup
 }
 
