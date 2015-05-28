@@ -42,7 +42,6 @@ static std::mutex cs_frameSkip;
 namespace Movie {
 
 static bool s_bFrameStep = false;
-static bool s_bReadOnly = true;
 
 enum PlayMode
 {
@@ -50,7 +49,6 @@ enum PlayMode
 	MODE_RECORDING,
 	MODE_PLAYING
 };
-static PlayMode s_playMode = MODE_NONE;
 static PlaybackInterfacePtr s_playback_interface;
 static RecordingInterfacePtr s_recording_interface;
 
@@ -58,20 +56,20 @@ static u32 s_framesToSkip = 0, s_frameSkipCounter = 0;
 
 static u8 s_numPads = 0;
 u64 g_currentFrame = 0; // VI
+// The number of frames that passed without polling for input
 static u64 s_currentLagCount = 0;
 static u64 s_recordingStartTime; // seconds since 1970 that recording started
 
 // config stuff
-static bool s_bSaveConfig = false;
 static bool s_bClearSave = false;
 static bool s_bDiscChange = false;
 
 bool g_bReset = false;
 static std::string s_discChange = "";
 static u64 s_titleID = 0;
-static u8 s_bongos;
 
 static bool s_bRecordingFromSaveState = false;
+// If input was polled for the current frame
 static bool s_bPolled = false;
 
 static std::string s_InputDisplay[8];
@@ -191,14 +189,6 @@ void DoFrameStep()
 	}
 }
 
-void SetReadOnly(bool bEnabled)
-{
-	if (s_bReadOnly != bEnabled)
-		Core::DisplayMessage(bEnabled ? "Read-only mode." :  "Read+Write mode.", 1000);
-
-	s_bReadOnly = bEnabled;
-}
-
 void FrameSkipping()
 {
 	// Frameskipping will desync movie playback
@@ -256,34 +246,27 @@ bool IsMovieActive()
 	return IsPlayingInput() || IsRecordingInput();
 }
 
-bool IsReadOnly()
-{
-	return s_bReadOnly;
-}
-
 u64 GetRecordingStartTime()
 {
 	return s_recordingStartTime;
 }
 
+void SetRecordingStartTime(u64 time)
+{
+	s_recordingStartTime = time;
+}
+
+// TODO
 bool IsUsingPad(int controller)
 {
-	return ((s_numPads & (1 << controller)) != 0);
+	return controller == 0;
+	//	return ((s_numPads & (1 << controller)) != 0);
 }
 
-bool IsUsingBongo(int controller)
-{
-	return ((s_bongos & (1 << controller)) != 0);
-}
-
+// TODO
 static bool IsUsingWiimote(int wiimote)
 {
 	return ((s_numPads & (1 << (wiimote + 4))) != 0);
-}
-
-bool IsConfigSaved()
-{
-	return s_bSaveConfig;
 }
 
 bool IsStartingFromClearSave()
@@ -291,6 +274,7 @@ bool IsStartingFromClearSave()
 	return s_bClearSave;
 }
 
+// TODO
 bool IsUsingMemcard(int memcard)
 {
 	return true;
@@ -304,7 +288,7 @@ static void ChangePads(bool instantly)
 	int controllers = 0;
 
 	for (int i = 0; i < MAX_SI_CHANNELS; ++i)
-		if (SConfig::GetInstance().m_SIDevice[i] == SIDEVICE_GC_CONTROLLER || SConfig::GetInstance().m_SIDevice[i] == SIDEVICE_GC_TARUKONGA)
+		if (SConfig::GetInstance().m_SIDevice[i] == SIDEVICE_GC_CONTROLLER)
 			controllers |= (1 << i);
 
 	if (instantly && (s_numPads & 0x0F) == controllers)
@@ -312,9 +296,9 @@ static void ChangePads(bool instantly)
 
 	for (int i = 0; i < MAX_SI_CHANNELS; ++i)
 		if (instantly) // Changes from savestates need to be instantaneous
-			SerialInterface::AddDevice(IsUsingPad(i) ? (IsUsingBongo(i) ? SIDEVICE_GC_TARUKONGA : SIDEVICE_GC_CONTROLLER) : SIDEVICE_NONE, i);
+			SerialInterface::AddDevice(IsUsingPad(i) ? SIDEVICE_GC_CONTROLLER : SIDEVICE_NONE, i);
 		else
-			SerialInterface::ChangeDevice(IsUsingPad(i) ? (IsUsingBongo(i) ? SIDEVICE_GC_TARUKONGA : SIDEVICE_GC_CONTROLLER) : SIDEVICE_NONE, i);
+			SerialInterface::ChangeDevice(IsUsingPad(i) ? SIDEVICE_GC_CONTROLLER : SIDEVICE_NONE, i);
 }
 
 void ChangeWiiPads(bool instantly)
@@ -338,7 +322,7 @@ void ChangeWiiPads(bool instantly)
 
 bool BeginRecordingInput(int controllers)
 {
-	if (s_playMode != MODE_NONE || controllers == 0)
+	if (IsRecordingInput() || controllers == 0)
 		return false;
 
 	bool was_unpaused = Core::PauseAndLock(true);
@@ -346,7 +330,6 @@ bool BeginRecordingInput(int controllers)
 	s_numPads = controllers;
 	g_currentFrame = 0;
 	s_currentLagCount = 0;
-	s_bongos = 0;
 	if (NetPlay::IsNetPlayRunning())
 	{
 		s_recordingStartTime = g_netplay_initial_gctime;
@@ -355,10 +338,6 @@ bool BeginRecordingInput(int controllers)
 	{
 		s_recordingStartTime = Common::Timer::GetLocalTimeSinceJan1970();
 	}
-
-	for (int i = 0; i < MAX_SI_CHANNELS; ++i)
-		if (SConfig::GetInstance().m_SIDevice[i] == SIDEVICE_GC_TARUKONGA)
-			s_bongos |= (1 << i);
 
 	if (Core::IsRunningAndStarted())
 	{
@@ -380,10 +359,7 @@ bool BeginRecordingInput(int controllers)
 		}
 		GetSettings();
 	}
-	s_playMode = MODE_RECORDING;
-
 	s_recording_interface.reset(new LinearRecording());
-
 	Core::UpdateWantDeterminism();
 
 	Core::PauseAndLock(false, was_unpaused);
@@ -586,7 +562,7 @@ static void SetWiiInputDisplayString(int remoteID, u8* const data, const Wiimote
 
 bool PlayInput(const std::string& filename)
 {
-	if (s_playMode != MODE_NONE || !File::Exists(filename))
+	if (IsPlayingInput() || !File::Exists(filename))
 		return false;
 
 	g_currentFrame = 0;
@@ -598,8 +574,6 @@ bool PlayInput(const std::string& filename)
 	if (!s_playback_interface)
 		return false;
 
-	s_playMode = MODE_PLAYING;
-
 	Core::UpdateWantDeterminism();
 
 	// In this block, you would load the savestate if that's where it starts at.
@@ -609,6 +583,9 @@ bool PlayInput(const std::string& filename)
 
 void DoState(PointerWrap &p)
 {
+	// TODO
+	// Keeping these here for now so that the state version doesn't change
+	// They will be removed for the PR
 	u64 s_currentByte = 0, s_tickCountAtLastInput = 0, s_currentInputCount = 0;
 
 	// many of these could be useful to save even when no movie is active,
@@ -634,7 +611,7 @@ void LoadInput(const std::string& filename)
 }
 
 // Callback when GCPad gets pad status
-// Note sure about netplay.
+// Not sure about netplay.
 void GetPadStatus(GCPadStatus* pad_status, int controller_id)
 {
 	s_bPolled = true;
@@ -680,11 +657,10 @@ void UpdateWiimote(int wiimote, u8* data, const WiimoteEmu::ReportFeatures& rptf
 
 void EndPlayInput()
 {
-	if (s_playMode != MODE_NONE)
+	if (IsPlayingInput())
 	{
 		s_playback_interface.reset(nullptr);
 
-		s_playMode = MODE_NONE;
 		Core::UpdateWantDeterminism();
 		Core::DisplayMessage("Movie End.", 2000);
 		s_bRecordingFromSaveState = false;
@@ -729,7 +705,7 @@ void SetGraphicsConfig()
 void GetSettings()
 {
 	// Copies SConfig::GetInstance().m_LocalCoreStartupParameter to local variables.
-	s_bSaveConfig = true;
+
 	/*
 	s_bSkipIdle = SConfig::GetInstance().m_LocalCoreStartupParameter.bSkipIdle;
 	s_bDualCore = SConfig::GetInstance().m_LocalCoreStartupParameter.bCPUThread;
@@ -782,7 +758,7 @@ void SaveClearCallback(u64 tmdTitleID)
 	}
 
 	// TODO: Force the game to save to another location, instead of moving the user's save.
-	if (IsPlayingInput() && IsConfigSaved() && IsStartingFromClearSave())
+	if (IsPlayingInput() && IsStartingFromClearSave())
 	{
 		if (File::Exists(savePath + "banner.bin"))
 		{
@@ -837,10 +813,13 @@ std::string GetDebugInfo()
 	return info;
 }
 
+// Set all startup options here, including controllers and memcards and stuff
 void SetStartupOptions(SCoreStartupParameter* startUp)
 {
-	if (IsPlayingInput() && IsConfigSaved())
+	if (IsPlayingInput())
 	{
+		Core::UpdateWantDeterminism();
+
 		/*
 		startUp->bCPUThread = s_bDualCore;
 		startUp->bSkipIdle = s_bSkipIdle;

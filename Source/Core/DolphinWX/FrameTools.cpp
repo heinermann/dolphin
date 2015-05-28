@@ -204,7 +204,6 @@ wxMenuBar* CFrame::CreateMenu()
 	movieMenu->Append(IDM_RECORD, GetMenuLabel(HK_START_RECORDING));
 	movieMenu->Append(IDM_PLAY_RECORD, GetMenuLabel(HK_PLAY_RECORDING));
 	movieMenu->Append(IDM_RECORD_EXPORT, GetMenuLabel(HK_EXPORT_RECORDING));
-	movieMenu->Append(IDM_RECORD_READ_ONLY, GetMenuLabel(HK_READ_ONLY_MODE), wxEmptyString, wxITEM_CHECK);
 	movieMenu->Append(IDM_TAS_INPUT, _("TAS Input"));
 	movieMenu->AppendSeparator();
 	movieMenu->AppendCheckItem(IDM_TOGGLE_PAUSE_MOVIE, _("Pause at End of Movie"));
@@ -213,7 +212,6 @@ wxMenuBar* CFrame::CreateMenu()
 	movieMenu->Check(IDM_SHOW_LAG, SConfig::GetInstance().m_ShowLag);
 	movieMenu->AppendCheckItem(IDM_SHOW_FRAME_COUNT, _("Show Frame Counter"));
 	movieMenu->Check(IDM_SHOW_FRAME_COUNT, SConfig::GetInstance().m_ShowFrameCount);
-	movieMenu->Check(IDM_RECORD_READ_ONLY, true);
 	movieMenu->AppendCheckItem(IDM_SHOW_INPUT_DISPLAY, _("Show Input Display"));
 	movieMenu->Check(IDM_SHOW_INPUT_DISPLAY, SConfig::GetInstance().m_ShowInputDisplay);
 	movieMenu->AppendSeparator();
@@ -432,9 +430,6 @@ wxString CFrame::GetMenuLabel(int Id)
 			break;
 		case HK_EXPORT_RECORDING:
 			Label = _("Export Recording...");
-			break;
-		case HK_READ_ONLY_MODE:
-			Label = _("&Read-Only Mode");
 			break;
 
 		case HK_FULLSCREEN:
@@ -718,11 +713,6 @@ void CFrame::DoOpen(bool Boot)
 	}
 }
 
-void CFrame::OnRecordReadOnly(wxCommandEvent& event)
-{
-	Movie::SetReadOnly(event.IsChecked());
-}
-
 void CFrame::OnTASInput(wxCommandEvent& event)
 {
 	for (int i = 0; i < 4; ++i)
@@ -801,13 +791,6 @@ void CFrame::OnRecord(wxCommandEvent& WXUNUSED (event))
 
 	int controllers = 0;
 
-	if (Movie::IsReadOnly())
-	{
-		// The user just chose to record a movie, so that should take precedence
-		Movie::SetReadOnly(false);
-		GetMenuBar()->FindItem(IDM_RECORD_READ_ONLY)->Check(false);
-	}
-
 	for (int i = 0; i < 4; i++)
 	{
 		if (SConfig::GetInstance().m_SIDevice[i] == SIDEVICE_GC_CONTROLLER || SConfig::GetInstance().m_SIDevice[i] == SIDEVICE_GC_TARUKONGA)
@@ -833,13 +816,6 @@ void CFrame::OnPlayRecording(wxCommandEvent& WXUNUSED (event))
 
 	if (path.IsEmpty())
 		return;
-
-	if (!Movie::IsReadOnly())
-	{
-		// let's make the read-only flag consistent at the start of a movie.
-		Movie::SetReadOnly(true);
-		GetMenuBar()->FindItem(IDM_RECORD_READ_ONLY)->Check();
-	}
 
 	if (Movie::PlayInput(WxStrToStr(path)))
 		BootGame("");
@@ -1820,8 +1796,6 @@ void CFrame::UpdateGUI()
 			}
 		}
 	}
-
-	GetMenuBar()->FindItem(IDM_RECORD_READ_ONLY)->Enable(Running || Paused);
 
 	if (!Initialized && !m_bGameLoading)
 	{

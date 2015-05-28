@@ -107,17 +107,10 @@ void CRenderFrame::OnDropFiles(wxDropFilesEvent& event)
 	wxFileName file = event.GetFiles()[0];
 	const std::string filepath = WxStrToStr(file.GetFullPath());
 
-	if (file.GetExt() == "dtm")
+	if (file.GetExt() == "dijson" || file.GetExt() == "dibin")
 	{
 		if (Core::IsRunning())
 			return;
-
-		if (!Movie::IsReadOnly())
-		{
-			// let's make the read-only flag consistent at the start of a movie.
-			Movie::SetReadOnly(true);
-			main_frame->GetMenuBar()->FindItem(IDM_RECORD_READ_ONLY)->Check(true);
-		}
 
 		if (Movie::PlayInput(filepath))
 			main_frame->BootGame("");
@@ -247,7 +240,6 @@ EVT_MENU(IDM_RESET, CFrame::OnReset)
 EVT_MENU(IDM_RECORD, CFrame::OnRecord)
 EVT_MENU(IDM_PLAY_RECORD, CFrame::OnPlayRecording)
 EVT_MENU(IDM_RECORD_EXPORT, CFrame::OnRecordExport)
-EVT_MENU(IDM_RECORD_READ_ONLY, CFrame::OnRecordReadOnly)
 EVT_MENU(IDM_TAS_INPUT, CFrame::OnTASInput)
 EVT_MENU(IDM_TOGGLE_PAUSE_MOVIE, CFrame::OnTogglePauseMovie)
 EVT_MENU(IDM_SHOW_LAG, CFrame::OnShowLag)
@@ -960,7 +952,6 @@ int GetCmdForHotkey(unsigned int key)
 	case HK_START_RECORDING: return IDM_RECORD;
 	case HK_PLAY_RECORDING: return IDM_PLAY_RECORD;
 	case HK_EXPORT_RECORDING: return IDM_RECORD_EXPORT;
-	case HK_READ_ONLY_MODE: return IDM_RECORD_READ_ONLY;
 	case HK_FULLSCREEN: return IDM_TOGGLE_FULLSCREEN;
 	case HK_SCREENSHOT: return IDM_SCREENSHOT;
 	case HK_EXIT: return wxID_EXIT;

@@ -231,8 +231,7 @@ void CEXIMemoryCard::SetupRawMemcard(u16 sizeMb)
 {
 	std::string filename =
 		(card_index == 0) ? SConfig::GetInstance().m_strMemoryCardA : SConfig::GetInstance().m_strMemoryCardB;
-	if (Movie::IsPlayingInput() && Movie::IsConfigSaved() && Movie::IsUsingMemcard(card_index) &&
-		Movie::IsStartingFromClearSave())
+	if (Movie::IsPlayingInput() && Movie::IsUsingMemcard(card_index) && Movie::IsStartingFromClearSave())
 		filename = File::GetUserPath(D_GCUSER_IDX) + StringFromFormat("Movie%s.raw", (card_index == 0) ? "A" : "B");
 
 	if (sizeMb == MemCard251Mb)

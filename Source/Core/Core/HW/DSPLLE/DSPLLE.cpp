@@ -18,7 +18,6 @@
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/Host.h"
-#include "Core/Movie.h"
 #include "Core/NetPlayProto.h"
 #include "Core/DSP/DSPCaptureLogger.h"
 #include "Core/DSP/DSPCore.h"
@@ -175,8 +174,7 @@ bool DSPLLE::Initialize(bool bWii, bool bDSPThread)
 		return false;
 
 	// needs to be after DSPCore_Init for the dspjit ptr
-	if (NetPlay::IsNetPlayRunning() || Movie::IsMovieActive() ||
-	    Core::g_want_determinism    || !dspjit)
+	if (NetPlay::IsNetPlayRunning() || Core::g_want_determinism || !dspjit)
 	{
 		bDSPThread = false;
 	}
@@ -319,7 +317,7 @@ void DSPLLE::DSP_Update(int cycles)
 */
 	if (m_bDSPThread)
 	{
-		if (requestDisableThread || NetPlay::IsNetPlayRunning() || Movie::IsMovieActive() || Core::g_want_determinism)
+		if (requestDisableThread || NetPlay::IsNetPlayRunning() || Core::g_want_determinism)
 		{
 			DSP_StopSoundStream();
 			m_bDSPThread = false;

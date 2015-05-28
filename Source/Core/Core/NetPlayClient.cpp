@@ -653,10 +653,6 @@ bool NetPlayClient::StartGame(const std::string &path)
 
 	if (m_dialog->IsRecording())
 	{
-
-		if (Movie::IsReadOnly())
-			Movie::SetReadOnly(false);
-
 		u8 controllers_mask = 0;
 		for (unsigned int i = 0; i < 4; ++i)
 		{

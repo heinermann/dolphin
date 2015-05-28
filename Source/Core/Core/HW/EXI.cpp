@@ -34,7 +34,7 @@ void Init()
 	for (u32 i = 0; i < MAX_EXI_CHANNELS; i++)
 		g_Channels[i] = new CEXIChannel(i);
 
-	if (Movie::IsPlayingInput() && Movie::IsConfigSaved())
+	if (Movie::IsPlayingInput())
 	{
 		g_Channels[0]->AddDevice(Movie::IsUsingMemcard(0) ? EXIDEVICE_MEMORYCARD : EXIDEVICE_NONE, 0); // SlotA
 		g_Channels[1]->AddDevice(Movie::IsUsingMemcard(1) ? EXIDEVICE_MEMORYCARD : EXIDEVICE_NONE, 0); // SlotB

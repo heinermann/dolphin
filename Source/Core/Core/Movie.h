@@ -19,15 +19,14 @@ struct ReportFeatures;
 }
 
 // De-coupling notes (TODOs):
-//  - VideoConfig calls SetGraphicsConfig() when retrieving active config
+//  - VideoConfig
+//    - calls SetGraphicsConfig() when retrieving active config
 //  - HW/EXI.cpp:
 //    - Can set SConfig::GetInstance().m_EXIDevice[0/1] to memory card
 //  - HW/EXI_DeviceMemoryCard.cpp
 //    - Can set SConfig::GetInstance().m_strMemoryCardA/B to string for movie file
 //  - HW/Wiimote.cpp
 //    - Not sure but we can probably do this elsewhere
-//  - HW/DSPLLE/DSPLLE.cpp
-//    - Possibly old. Can be achieved through UpdateWantDeterminism.
 //  - BootManager
 //    - Need to experiment, but may not need to rely on this stuff calling Movie.
 //  - HW/SI.cpp
@@ -51,20 +50,17 @@ namespace Movie
 	bool IsJustStartingPlayingInputFromSaveState();
 	bool IsPlayingInput();
 	bool IsMovieActive();
-	bool IsReadOnly();
 	u64  GetRecordingStartTime();
+	void SetRecordingStartTime(u64 time);
 
-	bool IsConfigSaved();
 	bool IsStartingFromClearSave();
 	bool IsUsingMemcard(int memcard);
 	void SetGraphicsConfig();
 
 	bool IsUsingPad(int controller);
-	bool IsUsingBongo(int controller);
 	void ChangeWiiPads(bool instantly = false);
 
 	void DoFrameStep();
-	void SetReadOnly(bool bEnabled);
 
 	void SetFrameSkipping(unsigned int framesToSkip);
 

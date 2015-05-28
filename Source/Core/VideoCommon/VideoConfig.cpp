@@ -20,7 +20,7 @@ VideoConfig g_ActiveConfig;
 
 void UpdateActiveConfig()
 {
-	if (Movie::IsPlayingInput() && Movie::IsConfigSaved())
+	if (Movie::IsPlayingInput())
 		Movie::SetGraphicsConfig();
 	g_ActiveConfig = g_Config;
 }
