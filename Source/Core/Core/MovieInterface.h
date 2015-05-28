@@ -39,6 +39,7 @@ namespace Movie
 		virtual void PlayController(GCPadStatus* pad_status, int controller_id) = 0;
 		virtual void PlayWiimote(int wiimote_id, u8* data, const WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key& key) = 0;
 		virtual void FrameAdvance() = 0;
+		virtual bool IsFinished() = 0;
 
 		// Factory
 		static PlaybackInterfacePtr CreateInterface(const std::string& filename);

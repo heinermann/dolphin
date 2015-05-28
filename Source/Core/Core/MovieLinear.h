@@ -12,10 +12,21 @@
 
 namespace Movie
 {
+	enum class InputType : u8
+	{
+		GCPAD,
+		WIIMOTE,
+		RESET
+	};
+
 	struct LinearInput
 	{
-		int pad_number;
-		GCPadStatus input;
+		InputType type;
+		u8 pad_number;
+		union
+		{
+			GCPadStatus gcpad;
+		};
 	};
 
 	struct LinearFormat
@@ -28,7 +39,8 @@ namespace Movie
 
 		// Map of frame number and inputs.
 		// Frames with default values are omitted.
-		std::multimap<u64,LinearInput> inputs;
+		std::multimap<u64, LinearInput> inputs;
+
 	};
 
 	class LinearPlayback : public PlaybackInterface
@@ -39,9 +51,11 @@ namespace Movie
 		void PlayController(GCPadStatus* pad_status, int controller_id) override;
 		void PlayWiimote(int wiimote_id, u8* data, const WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key& key) override;
 		void FrameAdvance() override;
+		bool IsFinished() override;
 
 	private:
 		LinearFormat m_data = {};
+		bool m_finished = false;
 	};
 
 	class LinearRecording : public RecordingInterface

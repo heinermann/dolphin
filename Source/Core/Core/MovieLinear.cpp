@@ -26,7 +26,7 @@
 
 namespace cereal
 {
-	/* making an array
+	/* // making an array
 	template <class Archive>
 	void serialize(Archive& ar, std::array<int,5>& data)
 	{
@@ -36,20 +36,114 @@ namespace cereal
 			ar(it);
 	}
 	*/
+
+	// std::map string -> value specializations
+	template <class Archive, class T, class C, class A>
+	typename std::enable_if<cereal::traits::is_text_archive<Archive>::value, void>::type
+	save(Archive& ar, const std::map<std::string, T, C, A>& map)
+	{
+		for (const auto& it : map)
+			ar(cereal::make_nvp(it.first, it.second));
+	}
+	template <class Archive, class T, class C, class A>
+	typename std::enable_if<cereal::traits::is_text_archive<Archive>::value, void>::type
+	load(Archive& ar, std::map<std::string, T, C, A>& map)
+	{
+		map.clear();
+
+		const char* node_name;
+		while ((node_name = ar.getNodeName()) != nullptr)
+		{
+			std::string key(node_name);
+			std::string value;
+			ar(value);
+			map.emplace(key, value);
+		}
+	}
+
+	// std::multimap u64 -> [objects] specialization (frame key)
+	template <class Archive, class T, class C, class A>
+	typename std::enable_if<cereal::traits::is_text_archive<Archive>::value, void>::type
+	save(Archive& ar, const std::multimap<u64, T, C, A>& map)
+	{
+		std::vector<T> data;
+		u64 current_key = 0;
+		for (const auto& it : map)
+		{
+			if (current_key != it.first)
+			{
+				if (!data.empty())
+				{
+					ar(cereal::make_nvp(std::to_string(current_key), data));
+					data.clear();
+				}
+				current_key = it.first;
+			}
+
+			if (current_key == it.first)
+			{
+				data.emplace_back(it.second);
+			}
+		}
+		if (!data.empty())
+			ar(cereal::make_nvp(std::to_string(current_key), data));
+	}
+	template <class Archive, class T, class C, class A>
+	typename std::enable_if<cereal::traits::is_text_archive<Archive>::value, void>::type
+	load(Archive& ar, std::multimap<u64, T, C, A>& map)
+	{
+		map.clear();
+
+		const char* node_name;
+		while ((node_name = ar.getNodeName()) != nullptr)
+		{
+			std::string key_str(node_name);
+			u64 key = std::stoull(key_str);
+
+			std::vector<T> values;
+			ar(values);
+
+			for (const auto& v : values)
+				map.emplace(key, v);
+		}
+	}
+
 }
 
 
 namespace Movie
 {
+	static const std::array<std::string, 16> s_button_strings = {
+		"LEFT",
+		"RIGHT",
+		"DOWN",
+		"UP",
+		"Z",
+		"R",
+		"L",
+		"UNK1",
+		"A",
+		"B",
+		"X",
+		"Y",
+		"START",
+		"UNK2",
+		"UNK3",
+		"UNK4"
+	};
+	static const GCPadStatus s_neutral_pad = {
+		0, GCPadStatus::MAIN_STICK_CENTER_X, GCPadStatus::MAIN_STICK_CENTER_Y,
+		GCPadStatus::C_STICK_CENTER_X, GCPadStatus::C_STICK_CENTER_Y };
+
 	static bool IsNeutralPad(const GCPadStatus* pad)
 	{
-		return pad->button == 0 &&
-			pad->stickX == GCPadStatus::MAIN_STICK_CENTER_X &&
-			pad->stickY == GCPadStatus::MAIN_STICK_CENTER_Y &&
-			pad->substickX == GCPadStatus::C_STICK_CENTER_X &&
-			pad->substickY == GCPadStatus::C_STICK_CENTER_Y &&
-			pad->triggerLeft == 0 &&
-			pad->triggerRight == 0;
+		return pad->button == s_neutral_pad.button &&
+			pad->stickX == s_neutral_pad.stickX &&
+			pad->stickY == s_neutral_pad.stickY &&
+			pad->substickX == s_neutral_pad.substickX &&
+			pad->substickY == s_neutral_pad.substickY &&
+			pad->triggerLeft == s_neutral_pad.triggerLeft &&
+			pad->triggerRight == s_neutral_pad.triggerRight;
 	}
 
 	//
@@ -73,14 +167,49 @@ namespace Movie
 		ar(cereal::make_nvp(name, str));
 		value = std::bitset<N>(str);
 	}
+	
+	template <class Archive, size_t N>
+	typename std::enable_if<!cereal::traits::is_text_archive<Archive>::value, void>::type
+	serialize_bitset_str(Archive& ar, const std::string& name, std::bitset<N>& value, const std::array<std::string,N>&)
+	{
+		unsigned long long value_raw = value.to_ullong();
+		ar(cereal::make_nvp(name, value_raw));
+		value = std::bitset<N>(value_raw);
+	}
+	template <class Archive, size_t N>
+	typename std::enable_if<cereal::traits::is_text_archive<Archive>::value, void>::type
+	serialize_bitset_str(Archive& ar, const std::string& name, std::bitset<N>& value, const std::array<std::string,N>& drop_ins)
+	{
+		std::string str;
+		for (size_t i = 0; i < N; ++i)
+		{
+			if (value.test(i))
+			{
+				if (!str.empty()) str += ' ';
+				str += drop_ins[i];
+			}
+		}
+
+		ar(cereal::make_nvp(name, str));
+
+		value.reset();
+		std::istringstream ss(str);
+		while (ss >> str)
+		{
+			auto it = std::find(drop_ins.begin(), drop_ins.end(), str);
+			if (it != drop_ins.end())
+				value.set(it - drop_ins.begin());
+		}
+	}
+	
 
 	//
 	// Serialization functions
 	//
 
-	enum InputMask
+	enum GCInputMask
 	{
-		MASK_PAD_NUMBER,
+		MASK_PADNUM,
 		MASK_BUTTON,
 		MASK_ANALOG_X,
 		MASK_ANALOG_Y,
@@ -88,60 +217,83 @@ namespace Movie
 		MASK_CSTICK_Y,
 		MASK_TRIGGER_L,
 		MASK_TRIGGER_R,
-		MAX
+		MASK_MAX
 	};
 	template <class Archive>
 	void serialize(Archive& ar, LinearInput& data)
 	{
-		std::bitset<InputMask::MAX> input_mask;
+		ar(cereal::make_nvp("type", data.type));
 
-		if (data.pad_number != 0)
-			input_mask.set(MASK_PAD_NUMBER);
-		if (data.input.button != 0)
-			input_mask.set(MASK_BUTTON);
-		if (data.input.stickX != 128)
-			input_mask.set(MASK_ANALOG_X);
-		if (data.input.stickY != 128)
-			input_mask.set(MASK_ANALOG_Y);
-		if (data.input.substickX != 128)
-			input_mask.set(MASK_CSTICK_X);
-		if (data.input.substickY != 128)
-			input_mask.set(MASK_CSTICK_Y);
-		if (data.input.triggerLeft != 0)
-			input_mask.set(MASK_TRIGGER_L);
-		if (data.input.triggerRight != 0)
-			input_mask.set(MASK_TRIGGER_R);
-
-		serialize_bitset(ar, "mask", input_mask);
-
-		if (input_mask.test(MASK_PAD_NUMBER))
-			ar(cereal::make_nvp("padNumber", data.pad_number));
-
-		// Serialize buttons
-		if (input_mask.test(MASK_BUTTON))
+		if (data.type == InputType::GCPAD)
 		{
-			std::bitset<16> buttons(data.input.button);
-			serialize_bitset(ar, "buttons", buttons);
-			data.input.button = static_cast<u16>(buttons.to_ulong());
+			// Create input mask
+			std::bitset<MASK_MAX> input_mask;
+			if (data.pad_number != 0)
+				input_mask.set(MASK_PADNUM);
+			if (data.gcpad.button != s_neutral_pad.button)
+				input_mask.set(MASK_BUTTON);
+			if (data.gcpad.stickX != s_neutral_pad.stickX)
+				input_mask.set(MASK_ANALOG_X);
+			if (data.gcpad.stickY != s_neutral_pad.stickY)
+				input_mask.set(MASK_ANALOG_Y);
+			if (data.gcpad.substickX != s_neutral_pad.substickX)
+				input_mask.set(MASK_CSTICK_X);
+			if (data.gcpad.substickY != s_neutral_pad.substickY)
+				input_mask.set(MASK_CSTICK_Y);
+			if (data.gcpad.triggerLeft != s_neutral_pad.triggerLeft)
+				input_mask.set(MASK_TRIGGER_L);
+			if (data.gcpad.triggerRight != s_neutral_pad.triggerRight)
+				input_mask.set(MASK_TRIGGER_R);
+
+			serialize_bitset(ar, "mask", input_mask);
+
+			if (input_mask.test(MASK_PADNUM))
+				ar(cereal::make_nvp("padNumber", data.pad_number));
+			else
+				data.pad_number = 0;
+
+			// Serialize buttons
+			if (input_mask.test(MASK_BUTTON))
+			{
+				std::bitset<16> buttons(data.gcpad.button);
+				serialize_bitset_str(ar, "buttons", buttons, s_button_strings);
+				data.gcpad.button = static_cast<u16>(buttons.to_ulong());
+			}
+			else
+			{
+				data.gcpad.button = s_neutral_pad.button;
+			}
+
+			if (input_mask.test(MASK_ANALOG_X))
+				ar(cereal::make_nvp("analogX", data.gcpad.stickX));
+			else
+				data.gcpad.stickX = s_neutral_pad.stickX;
+
+			if (input_mask.test(MASK_ANALOG_Y))
+				ar(cereal::make_nvp("analogY", data.gcpad.stickY));
+			else
+				data.gcpad.stickY = s_neutral_pad.stickY;
+
+			if (input_mask.test(MASK_CSTICK_X))
+				ar(cereal::make_nvp("cstickX", data.gcpad.substickX));
+			else
+				data.gcpad.substickX = s_neutral_pad.substickX;
+
+			if (input_mask.test(MASK_CSTICK_Y))
+				ar(cereal::make_nvp("cstickY", data.gcpad.substickY));
+			else
+				data.gcpad.substickY = s_neutral_pad.substickX;
+
+			if (input_mask.test(MASK_TRIGGER_L))
+				ar(cereal::make_nvp("triggerL", data.gcpad.triggerLeft));
+			else
+				data.gcpad.triggerLeft = s_neutral_pad.triggerLeft;
+
+			if (input_mask.test(MASK_TRIGGER_R))
+				ar(cereal::make_nvp("triggerR", data.gcpad.triggerRight));
+			else
+				data.gcpad.triggerRight = s_neutral_pad.triggerRight;
 		}
-
-		if (input_mask.test(MASK_ANALOG_X))
-			ar(cereal::make_nvp("analogX", data.input.stickX));
-
-		if (input_mask.test(MASK_ANALOG_Y))
-			ar(cereal::make_nvp("analogY", data.input.stickY));
-
-		if (input_mask.test(MASK_CSTICK_X))
-			ar(cereal::make_nvp("cstickX", data.input.substickX));
-
-		if (input_mask.test(MASK_CSTICK_Y))
-			ar(cereal::make_nvp("cstickY", data.input.substickY));
-
-		if (input_mask.test(MASK_TRIGGER_L))
-			ar(cereal::make_nvp("triggerL", data.input.triggerLeft));
-
-		if (input_mask.test(MASK_TRIGGER_R))
-			ar(cereal::make_nvp("triggerR", data.input.triggerRight));
 	}
 
 	template <class Archive>
@@ -173,6 +325,8 @@ namespace Movie
 			cereal::PortableBinaryInputArchive archive(input_file);
 			serialize(archive, m_data);
 		}
+
+		SetRecordingStartTime(std::stoull(m_data.info["seed"]));
 	}
 
 	void LinearPlayback::PlayController(GCPadStatus* pad_status, int controller_id)
@@ -180,12 +334,14 @@ namespace Movie
 		auto range = m_data.inputs.equal_range(g_currentFrame);
 		for (auto it = range.first; it != range.second; ++it)
 		{
-			if (it->second.pad_number == controller_id)
+			if (it->second.type == InputType::GCPAD && it->second.pad_number == controller_id)
 			{
-				*pad_status = it->second.input;
+				*pad_status = it->second.gcpad;
 				return;
 			}
 		}
+
+		*pad_status = s_neutral_pad;
 	}
 
 	void LinearPlayback::PlayWiimote(int wiimote_id, u8* data, const WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key& key)
@@ -195,6 +351,13 @@ namespace Movie
 
 	void LinearPlayback::FrameAdvance()
 	{
+		if (m_data.inputs.empty() || g_currentFrame > m_data.inputs.rbegin()->first)
+			m_finished = true;
+	}
+
+	bool LinearPlayback::IsFinished()
+	{
+		return m_finished;
 	}
 
 	//
@@ -203,8 +366,27 @@ namespace Movie
 
 	void LinearRecording::RecordController(const GCPadStatus* pad_status, int controller_id)
 	{
-		if (!IsNeutralPad(pad_status))
-			m_data.inputs.insert(std::make_pair(g_currentFrame, LinearInput{controller_id, *pad_status}));
+		// Find if there is already an entry for this info
+		auto found_it = m_data.inputs.end();
+		auto range = m_data.inputs.equal_range(g_currentFrame);
+		for (auto it = range.first; it != range.second; ++it)
+		{
+			if (it->second.type == InputType::GCPAD && it->second.pad_number == controller_id)
+				found_it = it;
+		}
+
+		// Modify this entry or insert a new one
+		if (found_it != m_data.inputs.end())
+		{
+			if (IsNeutralPad(pad_status))
+				m_data.inputs.erase(found_it);
+			else
+				found_it->second.gcpad = *pad_status;
+		}
+		else if (!IsNeutralPad(pad_status))
+		{
+			m_data.inputs.emplace(g_currentFrame, LinearInput{InputType::GCPAD, static_cast<u8>(controller_id), *pad_status});
+		}
 	}
 
 	void LinearRecording::RecordWiimote(int wiimote_id, const u8* data, const WiimoteEmu::ReportFeatures& rptf, int ext, const wiimote_key& key)
@@ -218,6 +400,8 @@ namespace Movie
 
 	void LinearRecording::SaveRecording(const std::string& filename)
 	{
+		m_data.info["seed"] = std::to_string(GetRecordingStartTime());
+
 		const std::string extension = filename.substr(std::min(filename.size(), filename.rfind('.')));
 
 		if (extension == ".dijson")

@@ -102,6 +102,7 @@ static std::string GetInputDisplay()
 	return inputDisplay;
 }
 
+// Note: Calling EndPlayback from this function causes a crash.
 void FrameUpdate()
 {
 	g_currentFrame++;
@@ -109,7 +110,9 @@ void FrameUpdate()
 		s_currentLagCount++;
 
 	if (s_playback_interface)
+	{
 		s_playback_interface->FrameAdvance();
+	}
 	if (s_recording_interface)
 		s_recording_interface->FrameAdvance();
 
@@ -620,6 +623,9 @@ void GetPadStatus(GCPadStatus* pad_status, int controller_id)
 	if (IsPlayingInput() && IsUsingPad(controller_id))
 	{
 		s_playback_interface->PlayController(pad_status, controller_id);
+
+		if (s_playback_interface->IsFinished())
+			EndPlayInput();
 	}
 
 	// This is where netplay update would take place
@@ -642,6 +648,9 @@ void UpdateWiimote(int wiimote, u8* data, const WiimoteEmu::ReportFeatures& rptf
 	if (IsPlayingInput() && IsUsingWiimote(wiimote))
 	{
 		s_playback_interface->PlayWiimote(wiimote, data, rptf, ext, key);
+
+		if (s_playback_interface->IsFinished())
+			EndPlayInput();
 	}
 
 	// This is where netplay update and misc stuff would take place
